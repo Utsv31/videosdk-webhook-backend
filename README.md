@@ -1,0 +1,221 @@
+# VideoSDK Webhook Backend
+
+Node.js/Express backend for listening to VideoSDK call webhooks and creating Refrens CRM leads from positive call summaries.
+
+AiSensy/WhatsApp is intentionally disabled for now. The current flow focuses only on webhook listening and Refrens CRM lead creation.
+
+## Flow
+
+1. VideoSDK sends `POST /webhook`.
+2. The server responds `200` immediately so VideoSDK does not retry.
+3. `call-started` and `call-hangup` events are logged and ignored.
+4. Every webhook is saved to MongoDB in `call_events`.
+5. A payload containing `body["call-summary"]` is parsed asynchronously.
+6. The backend updates MongoDB with parsed summary data and positive-call decision.
+7. For positive calls, it creates a new Refrens lead using the summary webhook data.
+8. The backend updates MongoDB with the Refrens request/response or error.
+9. For non-positive calls, it marks the MongoDB record as skipped.
+
+## Positive Call Criteria
+
+A Refrens lead is created if any of these are true:
+
+- `call_outcome` is `Interested`
+- `call_outcome` is `Callback Requested`
+- `call_outcome` is `Need Time`
+- `offer_interest` is `Interested`
+- `sales_callback_required` is `true`
+
+These rules live in `src/handlers/callSummary.js` in `isPositiveCall()`.
+
+## Install
+
+```bash
+cd videosdk-webhook-backend
+npm install
+```
+
+## Configure
+
+Copy `.env.example` to `.env` and fill in real values:
+
+```bash
+cp .env.example .env
+```
+
+Required values:
+
+```env
+PORT=3000
+REFRENS_API_KEY=
+REFRENS_API_BASE_URL=https://api.refrens.com
+REFRENS_BUSINESS_SLUG=crm-lead-create
+REFRENS_DEFAULT_PIPELINE=Sales Pipeline
+REFRENS_DEFAULT_STAGE=Contacted
+MONGODB_URI=mongodb+srv://<db_username>:<db_password>@cluster0.qdrculk.mongodb.net/videosdk_crm?retryWrites=true&w=majority&appName=Cluster0
+MONGODB_DB_NAME=videosdk_crm
+MONGODB_EVENTS_COLLECTION=call_events
+```
+
+Optional:
+
+```env
+VIDEOSDK_WEBHOOK_SECRET=
+```
+
+If `VIDEOSDK_WEBHOOK_SECRET` is set, the server expects an `x-videosdk-signature` HMAC SHA-256 signature. If VideoSDK uses a different signature scheme, update `src/utils/validateWebhook.js`.
+
+## Run Locally
+
+```bash
+npm run dev
+```
+
+Health check:
+
+```bash
+curl http://localhost:3000/health
+```
+
+Webhook URL:
+
+```text
+http://localhost:3000/webhook
+```
+
+## Test With Ngrok
+
+```bash
+ngrok http 3000
+```
+
+Give VideoSDK this URL:
+
+```text
+https://<your-ngrok-domain>/webhook
+```
+
+## VideoSDK Payload Handling
+
+Ignored payloads:
+
+- `body.webhookType === "call-started"`
+- `body.webhookType === "call-hangup"`
+
+Processed payload:
+
+- `body["call-summary"]` exists
+
+The backend ignores `customer-data.crm_lead_id`. It creates a fresh lead using a stable `externalId` derived from the VideoSDK call:
+
+```text
+externalId = videosdk-{callId}
+```
+
+That makes webhook retries idempotent at the Refrens lead-create API level.
+
+## Refrens Lead Creation
+
+The CRM module posts to:
+
+```text
+POST {REFRENS_API_BASE_URL}/api/v1/businesses/{REFRENS_BUSINESS_SLUG}/leads
+```
+
+With the current production defaults, that resolves to:
+
+```text
+POST https://api.refrens.com/api/v1/businesses/crm-lead-create/leads
+```
+
+The payload contains:
+
+- `externalId`
+- `customer.name`
+- `customer.phone`
+- `contact.name`
+- `contact.phone`
+- `subject`
+- `details`
+- `pipeline`
+- `stage`
+- `leadSource`
+- `tags: []`
+
+Dynamic call fields are written into `details` instead of `tags` or `customFields` because the tested Refrens API rejects unknown tags and may reject custom fields if they are not enabled for the business.
+
+## MongoDB Storage
+
+MongoDB stores webhook and lead-processing history in:
+
+```text
+Database: videosdk_crm
+Collection: call_events
+```
+
+Each document stores:
+
+- `callId`
+- `webhookType`
+- `rawPayload`
+- `parsed`
+- `isPositiveCall`
+- `processing.status`
+- `processing.attempts`
+- `processing.lastError`
+- `refrens.attempted`
+- `refrens.success`
+- `refrens.externalId`
+- `refrens.leadId`
+- `refrens.statusCode`
+- `refrens.requestPayload`
+- `refrens.responsePayload`
+- timestamps
+
+The backend creates these indexes automatically:
+
+```text
+dedupeKey unique index
+callId + webhookType index
+processing.status + receivedAt index
+```
+
+`dedupeKey` uses:
+
+```text
+{webhookType}:{callId}
+```
+
+This keeps webhook retries from creating duplicate database records for the same call event.
+
+## Deployment Notes
+
+### Railway
+
+1. Create a new project from this folder/repo.
+2. Add environment variables from `.env.example`.
+3. Set start command to `npm start`.
+4. Use the public Railway domain as `https://<domain>/webhook`.
+
+### Render
+
+1. Create a new Web Service.
+2. Build command: `npm install`.
+3. Start command: `npm start`.
+4. Add environment variables in Render dashboard.
+5. Use `https://<render-domain>/webhook`.
+
+### DigitalOcean App Platform
+
+1. Create a Node.js app.
+2. Set build command to `npm install`.
+3. Set run command to `npm start`.
+4. Add environment variables.
+5. Use the generated app URL plus `/webhook`.
+
+## Error Handling
+
+- The webhook endpoint always responds `200`.
+- Refrens API calls are wrapped in `try/catch`.
+- Incoming webhook payloads and CRM API results are logged with timestamp and `callId`.
+- Logs are written to stdout and `logs/app.log`.
