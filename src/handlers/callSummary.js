@@ -24,6 +24,11 @@ const AGENT_IDS_BY_TYPE = {
   ]),
 };
 
+const PATCH_ONLY_AGENT_TYPES = new Set([
+  AGENT_TYPES.ADHOC,
+  AGENT_TYPES.GST,
+]);
+
 function unwrapWebhookBody(body) {
   return body?.body?.['call-summary'] ? body.body : body;
 }
@@ -148,8 +153,9 @@ function isPositiveCall(parsed) {
 
 async function processCallSummary(body, options = {}) {
   const parsed = parseCallSummary(body);
-  const isGstAgent = parsed.agentType === AGENT_TYPES.GST;
-  const shouldCreateLead = !isGstAgent && isPositiveCall(parsed);
+  const isPatchOnlyAgent = PATCH_ONLY_AGENT_TYPES.has(parsed.agentType);
+  const isPositive = isPositiveCall(parsed);
+  const shouldCreateLead = !isPatchOnlyAgent && isPositive;
   const { eventId } = options;
 
   logger.info('Processing call summary', {
@@ -161,10 +167,11 @@ async function processCallSummary(body, options = {}) {
     offerInterest: parsed.offerInterest,
     salesCallbackRequired: parsed.salesCallbackRequired,
     refrensLeadId: parsed.refrensLeadId,
+    isPositive,
     shouldCreateLead,
   });
 
-  await markEventParsed(eventId, parsed, shouldCreateLead);
+  await markEventParsed(eventId, parsed, isPositive);
 
   if (parsed.refrensLeadId) {
     try {
@@ -189,19 +196,19 @@ async function processCallSummary(body, options = {}) {
         throw error;
       }
 
-      logger.warn('Refrens lead id from VideoSDK payload was not found; falling back to create path', {
+      logger.warn('Refrens lead id from VideoSDK payload was not found', {
         callId: parsed.callId,
         refrensLeadId: parsed.refrensLeadId,
         agentType: parsed.agentType,
       });
 
-      if (isGstAgent) {
-        await markLeadSkipped(eventId, 'gst refrens lead not found; patch skipped');
+      if (isPatchOnlyAgent) {
+        await markLeadSkipped(eventId, `${parsed.agentType} refrens lead not found; patch skipped`);
 
         return {
           success: true,
           skipped: true,
-          reason: 'gst refrens lead not found; patch skipped',
+          reason: `${parsed.agentType} refrens lead not found; patch skipped`,
           callId: parsed.callId,
           refrensLeadId: parsed.refrensLeadId,
         };
@@ -221,18 +228,19 @@ async function processCallSummary(body, options = {}) {
     }
   }
 
-  if (isGstAgent) {
-    logger.warn('Skipping GST CRM action because refrensLeadId was not provided', {
+  if (isPatchOnlyAgent) {
+    logger.warn('Skipping CRM action because refrensLeadId was not provided for patch-only agent', {
       callId: parsed.callId,
       agentId: parsed.agentId,
+      agentType: parsed.agentType,
     });
 
-    await markLeadSkipped(eventId, 'gst call missing refrensLeadId; patch skipped');
+    await markLeadSkipped(eventId, `${parsed.agentType} call missing refrensLeadId; patch skipped`);
 
     return {
       success: true,
       skipped: true,
-      reason: 'gst call missing refrensLeadId; patch skipped',
+      reason: `${parsed.agentType} call missing refrensLeadId; patch skipped`,
       callId: parsed.callId,
     };
   }
@@ -279,6 +287,7 @@ async function processCallSummary(body, options = {}) {
 module.exports = {
   AGENT_TYPES,
   AGENT_IDS_BY_TYPE,
+  PATCH_ONLY_AGENT_TYPES,
   isCallSummaryPayload,
   unwrapWebhookBody,
   normalizeRefrensLeadId,

@@ -1,6 +1,6 @@
 # VideoSDK Webhook Backend
 
-Node.js/Express backend for listening to VideoSDK call webhooks, creating Refrens CRM leads from positive call summaries, and updating existing Refrens leads when a lead id is supplied.
+Node.js/Express backend for listening to VideoSDK call webhooks and updating existing Refrens CRM leads from call summaries.
 
 AiSensy/WhatsApp is intentionally disabled for now. The current flow focuses only on webhook listening and Refrens CRM lead creation.
 
@@ -13,14 +13,13 @@ AiSensy/WhatsApp is intentionally disabled for now. The current flow focuses onl
 5. A payload containing `body["call-summary"]` is parsed asynchronously.
 6. The backend updates MongoDB with parsed summary data and positive-call decision.
 7. If the summary contains a valid `refrensLeadId`, the backend verifies the lead exists and patches that existing Refrens lead.
-8. If the supplied `refrensLeadId` is not found, the backend falls back to the create path for positive calls.
-9. If no `refrensLeadId` exists, positive calls create a new Refrens lead using the summary webhook data.
+8. If the supplied `refrensLeadId` is not found, the event is stored and skipped.
+9. If no `refrensLeadId` exists, the event is stored and skipped.
 10. The backend updates MongoDB with the Refrens action, request/response, status code, and error if any.
-11. For non-positive calls without an existing Refrens lead, it marks the MongoDB record as skipped.
 
 ## Positive Call Criteria
 
-A Refrens lead is created if any of these are true:
+The legacy positive-call detector still parses these values for audit/debugging:
 
 - `call_outcome` is `Interested`
 - `call_outcome` is `Callback Requested`
@@ -28,7 +27,7 @@ A Refrens lead is created if any of these are true:
 - `offer_interest` is `Interested`
 - `sales_callback_required` is `true`
 
-These rules live in `src/handlers/callSummary.js` in `isPositiveCall()`.
+These rules live in `src/handlers/callSummary.js` in `isPositiveCall()`, but current ad hoc and GST flows are patch-only and do not create fallback leads.
 
 ## Install
 
@@ -118,7 +117,9 @@ To update an existing lead, pass the Refrens API lead id in VideoSDK metadata/cu
 
 The backend also accepts a valid 24-character ObjectId in `customer-data.crm_lead_id`, but `refrensLeadId` is the preferred name because it clearly refers to the Refrens API `leadId`.
 
-If no existing lead id is supplied, the backend creates a fresh lead using a stable `externalId` derived from the VideoSDK call:
+All current agent flows are patch-only. If no existing lead id is supplied, the backend stores the webhook and marks it skipped instead of creating a fallback lead.
+
+The legacy create path can still generate a stable `externalId` if a future non-patch-only agent flow enables creation:
 
 ```text
 externalId = videosdk-{callId}
@@ -130,12 +131,12 @@ That makes webhook retries idempotent at the Refrens lead-create API level.
 
 GST summary webhooks are detected when the `agentId` is listed in the in-code GST agent map, or when the summary contains GST-specific fields such as `call_status`, `gst_status`, or `lead_priority`.
 
-GST calls are patch-only:
+Ad hoc and GST calls are patch-only:
 
 - If `refrensLeadId` exists and the Refrens lead is found, the backend patches the existing lead.
 - If `refrensLeadId` is missing, the event is stored and skipped.
 - If `refrensLeadId` is provided but Refrens returns not found, the event is stored and skipped.
-- GST calls never create fallback leads.
+- The backend does not create fallback leads for current agent flows.
 
 GST patch behavior:
 
