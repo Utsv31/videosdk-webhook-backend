@@ -1,6 +1,20 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 
+const GST_PATCH_CONFIG = {
+  tags: {
+    identityConfirmed: 'Identity Confirmed',
+    invoicingBilling: 'invoicing and billing requirement',
+    completeAccounting: 'complete accounting requirement',
+    aiDemoRequested: 'AI Demo Requested',
+    salesCallback: 'Sales Person callback',
+  },
+  stages: {
+    identityConfirmed: '1.e AI Contact - Identity Confirmed',
+    salesCallback: '1.g AI Contact - Sales Person Callback',
+  },
+};
+
 function getCrmConfig() {
   const apiKey = process.env.REFRENS_API_KEY;
   const baseUrl = (process.env.REFRENS_API_BASE_URL || 'https://api.refrens.com').replace(/\/$/, '');
@@ -71,10 +85,6 @@ function isYes(value) {
   return value === 'yes' || value === true;
 }
 
-function getEnvValue(name, fallback) {
-  return process.env[name] || fallback;
-}
-
 function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -110,21 +120,21 @@ function buildInternalNoteEntries(parsed) {
 
 function buildGstTags(parsed) {
   return uniqueValues([
-    isYes(parsed.isRightBusiness) && getEnvValue('GST_TAG_IDENTITY_CONFIRMED', 'Identity Confirmed'),
-    isYes(parsed.invoicingAndBilling) && getEnvValue('GST_TAG_INVOICING_BILLING', 'invoicing and billing requirement'),
-    isYes(parsed.completeAccounting) && getEnvValue('GST_TAG_COMPLETE_ACCOUNTING', 'complete accounting requirement'),
-    isYes(parsed.demoRequested) && getEnvValue('GST_TAG_AI_DEMO_REQUESTED', 'AI Demo Requested'),
-    parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback) && getEnvValue('GST_TAG_SALES_CALLBACK', 'Sales Person callback'),
+    isYes(parsed.isRightBusiness) && GST_PATCH_CONFIG.tags.identityConfirmed,
+    isYes(parsed.invoicingAndBilling) && GST_PATCH_CONFIG.tags.invoicingBilling,
+    isYes(parsed.completeAccounting) && GST_PATCH_CONFIG.tags.completeAccounting,
+    isYes(parsed.demoRequested) && GST_PATCH_CONFIG.tags.aiDemoRequested,
+    parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback) && GST_PATCH_CONFIG.tags.salesCallback,
   ]);
 }
 
 function getGstStage(parsed) {
   if (parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback)) {
-    return getEnvValue('GST_STAGE_SALES_CALLBACK', '1.g AI Contact - Sales Person Callback');
+    return GST_PATCH_CONFIG.stages.salesCallback;
   }
 
   if (isYes(parsed.isRightBusiness)) {
-    return getEnvValue('GST_STAGE_IDENTITY_CONFIRMED', '1.e AI Contact - Identity Confirmed');
+    return GST_PATCH_CONFIG.stages.identityConfirmed;
   }
 
   return null;
@@ -339,6 +349,7 @@ module.exports = {
   buildCreateLeadPayload,
   buildPatchLeadPayload,
   buildGstPatchLeadPayload,
+  GST_PATCH_CONFIG,
   createLeadInCrm,
   getLeadInCrm,
   patchLeadInCrm,

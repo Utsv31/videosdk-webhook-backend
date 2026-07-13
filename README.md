@@ -54,14 +54,6 @@ REFRENS_API_BASE_URL=https://api.refrens.com
 REFRENS_BUSINESS_SLUG=crm-lead-create
 REFRENS_DEFAULT_PIPELINE=Sales Pipeline
 REFRENS_DEFAULT_STAGE=Contacted
-VIDEOSDK_GST_AGENT_IDS=ag_n8irvh
-GST_TAG_IDENTITY_CONFIRMED=Identity Confirmed
-GST_TAG_INVOICING_BILLING=invoicing and billing requirement
-GST_TAG_COMPLETE_ACCOUNTING=complete accounting requirement
-GST_TAG_AI_DEMO_REQUESTED=AI Demo Requested
-GST_TAG_SALES_CALLBACK=Sales Person callback
-GST_STAGE_IDENTITY_CONFIRMED=1.e AI Contact - Identity Confirmed
-GST_STAGE_SALES_CALLBACK=1.g AI Contact - Sales Person Callback
 MONGODB_URI=mongodb+srv://<db_username>:<db_password>@cluster0.qdrculk.mongodb.net/videosdk_crm?retryWrites=true&w=majority&appName=Cluster0
 MONGODB_DB_NAME=videosdk_crm
 MONGODB_EVENTS_COLLECTION=call_events
@@ -136,7 +128,7 @@ That makes webhook retries idempotent at the Refrens lead-create API level.
 
 ## GST Agent Flow
 
-GST summary webhooks are detected when the `agentId` is listed in `VIDEOSDK_GST_AGENT_IDS`, or when the summary contains GST-specific fields such as `call_status`, `gst_status`, or `lead_priority`.
+GST summary webhooks are detected when the `agentId` is listed in the in-code GST agent map, or when the summary contains GST-specific fields such as `call_status`, `gst_status`, or `lead_priority`.
 
 GST calls are patch-only:
 
@@ -148,13 +140,15 @@ GST calls are patch-only:
 GST patch behavior:
 
 - Always appends the VideoSDK summary as internal notes.
-- Adds `GST_TAG_IDENTITY_CONFIRMED` when `is_right_business` is `yes`.
-- Adds `GST_TAG_INVOICING_BILLING` when `invoicing_and_billing` is `yes`.
-- Adds `GST_TAG_COMPLETE_ACCOUNTING` when `complete_accounting` is `yes`.
-- Adds `GST_TAG_AI_DEMO_REQUESTED` when `demo_requested` is `yes`.
-- Adds `GST_TAG_SALES_CALLBACK` when `call_status` is `busy` and callback is needed.
-- Moves to `GST_STAGE_SALES_CALLBACK` for busy + callback-needed calls.
-- Otherwise moves to `GST_STAGE_IDENTITY_CONFIRMED` when identity is confirmed.
+- Adds `Identity Confirmed` when `is_right_business` is `yes`.
+- Adds `invoicing and billing requirement` when `invoicing_and_billing` is `yes`.
+- Adds `complete accounting requirement` when `complete_accounting` is `yes`.
+- Adds `AI Demo Requested` when `demo_requested` is `yes`.
+- Adds `Sales Person callback` when `call_status` is `busy` and callback is needed.
+- Moves to `1.g AI Contact - Sales Person Callback` for busy + callback-needed calls.
+- Otherwise moves to `1.e AI Contact - Identity Confirmed` when identity is confirmed.
+
+GST agent ids, tag names, and stage names are kept in code constants instead of Render env variables so Render configuration stays short as more agent flows are added.
 
 Tags are sent with Refrens `tagsAdd`, which expects existing tag names. Refrens resolves the tag names internally; tag ids are not sent by this backend.
 

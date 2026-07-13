@@ -18,6 +18,12 @@ const AGENT_TYPES = {
   GST: 'gst',
 };
 
+const AGENT_IDS_BY_TYPE = {
+  [AGENT_TYPES.GST]: new Set([
+    'ag_n8irvh',
+  ]),
+};
+
 function unwrapWebhookBody(body) {
   return body?.body?.['call-summary'] ? body.body : body;
 }
@@ -49,13 +55,6 @@ function getRefrensLeadId(customerData, roomData, body) {
   );
 }
 
-function parseCsvEnv(value) {
-  return String(value || '')
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
 function hasGstSummaryShape(summary) {
   return Boolean(
     summary.call_status ||
@@ -67,9 +66,7 @@ function hasGstSummaryShape(summary) {
 }
 
 function getAgentType(summary, roomData) {
-  const gstAgentIds = parseCsvEnv(process.env.VIDEOSDK_GST_AGENT_IDS);
-
-  if (roomData.agentId && gstAgentIds.includes(roomData.agentId)) {
+  if (roomData.agentId && AGENT_IDS_BY_TYPE[AGENT_TYPES.GST].has(roomData.agentId)) {
     return AGENT_TYPES.GST;
   }
 
@@ -281,6 +278,7 @@ async function processCallSummary(body, options = {}) {
 
 module.exports = {
   AGENT_TYPES,
+  AGENT_IDS_BY_TYPE,
   isCallSummaryPayload,
   unwrapWebhookBody,
   normalizeRefrensLeadId,
