@@ -13,8 +13,18 @@ const {
 } = require('../repositories/callEvents');
 const logger = require('../utils/logger');
 
+const AGENT_TYPES = {
+  ADHOC: 'adhoc',
+  GST: 'gst',
+};
+
+function unwrapWebhookBody(body) {
+  return body?.body?.['call-summary'] ? body.body : body;
+}
+
 function isCallSummaryPayload(body) {
-  return Boolean(body && body['call-summary']);
+  const payload = unwrapWebhookBody(body);
+  return Boolean(payload && payload['call-summary']);
 }
 
 function normalizeRefrensLeadId(value) {
@@ -39,14 +49,52 @@ function getRefrensLeadId(customerData, roomData, body) {
   );
 }
 
+function parseCsvEnv(value) {
+  return String(value || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function hasGstSummaryShape(summary) {
+  return Boolean(
+    summary.call_status ||
+    summary.gst_status ||
+    summary.current_invoicing_platform ||
+    summary.requirement_type ||
+    summary.lead_priority,
+  );
+}
+
+function getAgentType(summary, roomData) {
+  const gstAgentIds = parseCsvEnv(process.env.VIDEOSDK_GST_AGENT_IDS);
+
+  if (roomData.agentId && gstAgentIds.includes(roomData.agentId)) {
+    return AGENT_TYPES.GST;
+  }
+
+  return hasGstSummaryShape(summary) ? AGENT_TYPES.GST : AGENT_TYPES.ADHOC;
+}
+
+function normalizeEnumValue(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
+
+function normalizeYesNo(value) {
+  const normalized = normalizeEnumValue(value);
+  return normalized === 'true' ? 'yes' : normalized === 'false' ? 'no' : normalized;
+}
+
 function parseCallSummary(body) {
-  const summary = body['call-summary'] || {};
-  const customerData = body['customer-data'] || {};
-  const roomData = body['room-data'] || {};
+  const payload = unwrapWebhookBody(body) || {};
+  const summary = payload['call-summary'] || {};
+  const customerData = payload['customer-data'] || {};
+  const roomData = payload['room-data'] || {};
 
   return {
     callId: customerData.callId,
     customerName: customerData.name,
+    businessName: customerData.business_name,
     phone: customerData.sipCallTo,
     callerPhone: customerData.sipCallFrom,
     campaign: customerData.campaign || summary.campaign,
@@ -63,7 +111,22 @@ function parseCallSummary(body) {
     currentNeed: summary.current_need,
     importantNotes: summary.important_notes,
     recommendedAction: summary.recommended_action,
-    callSummaryText: summary.call_summary,
+    callSummaryText: summary.call_summary || summary.summary,
+
+    agentType: getAgentType(summary, roomData),
+    gstCallStatus: normalizeEnumValue(summary.call_status),
+    gstStatus: normalizeEnumValue(summary.gst_status || summary.is_gst_registred),
+    isRightBusiness: normalizeYesNo(summary.is_right_business),
+    isNeedCallback: normalizeYesNo(summary.is_need_callback || summary.is_callback_needed),
+    invoicingAndBilling: normalizeYesNo(summary.invoicing_and_billing),
+    completeAccounting: normalizeYesNo(summary.complete_accounting),
+    demoRequested: normalizeYesNo(summary.demo_requested),
+    currentInvoicingPlatform: normalizeEnumValue(summary.current_invoicing_platform),
+    requirementType: normalizeEnumValue(summary.requirement_type),
+    businessNature: normalizeEnumValue(summary.business_nature),
+    leadPriority: normalizeEnumValue(summary.lead_priority),
+    businessAge: summary.business_age,
+    businessDescription: summary.business_description,
 
     agentId: roomData.agentId,
     meetingId: roomData['meeting-id'],
@@ -88,12 +151,15 @@ function isPositiveCall(parsed) {
 
 async function processCallSummary(body, options = {}) {
   const parsed = parseCallSummary(body);
-  const shouldCreateLead = isPositiveCall(parsed);
+  const isGstAgent = parsed.agentType === AGENT_TYPES.GST;
+  const shouldCreateLead = !isGstAgent && isPositiveCall(parsed);
   const { eventId } = options;
 
   logger.info('Processing call summary', {
+    agentType: parsed.agentType,
     callId: parsed.callId,
     callOutcome: parsed.callOutcome,
+    gstCallStatus: parsed.gstCallStatus,
     interestLevel: parsed.interestLevel,
     offerInterest: parsed.offerInterest,
     salesCallbackRequired: parsed.salesCallbackRequired,
@@ -129,7 +195,20 @@ async function processCallSummary(body, options = {}) {
       logger.warn('Refrens lead id from VideoSDK payload was not found; falling back to create path', {
         callId: parsed.callId,
         refrensLeadId: parsed.refrensLeadId,
+        agentType: parsed.agentType,
       });
+
+      if (isGstAgent) {
+        await markLeadSkipped(eventId, 'gst refrens lead not found; patch skipped');
+
+        return {
+          success: true,
+          skipped: true,
+          reason: 'gst refrens lead not found; patch skipped',
+          callId: parsed.callId,
+          refrensLeadId: parsed.refrensLeadId,
+        };
+      }
 
       if (!shouldCreateLead) {
         await markLeadSkipped(eventId, 'refrens lead not found and non-positive call');
@@ -143,6 +222,22 @@ async function processCallSummary(body, options = {}) {
         };
       }
     }
+  }
+
+  if (isGstAgent) {
+    logger.warn('Skipping GST CRM action because refrensLeadId was not provided', {
+      callId: parsed.callId,
+      agentId: parsed.agentId,
+    });
+
+    await markLeadSkipped(eventId, 'gst call missing refrensLeadId; patch skipped');
+
+    return {
+      success: true,
+      skipped: true,
+      reason: 'gst call missing refrensLeadId; patch skipped',
+      callId: parsed.callId,
+    };
   }
 
   if (!shouldCreateLead) {
@@ -185,7 +280,9 @@ async function processCallSummary(body, options = {}) {
 }
 
 module.exports = {
+  AGENT_TYPES,
   isCallSummaryPayload,
+  unwrapWebhookBody,
   normalizeRefrensLeadId,
   parseCallSummary,
   isPositiveCall,

@@ -46,12 +46,12 @@ router.post('/', (req, res) => {
         return;
       }
 
-      if (body.webhookType === 'call-started' || body.webhookType === 'call-hangup') {
+      if (webhookType === 'call-started' || webhookType === 'call-hangup') {
         logger.info('Ignoring non-summary webhook', {
           callId,
-          webhookType: body.webhookType,
+          webhookType,
         });
-        await markEventIgnored(eventId, `ignored ${body.webhookType}`);
+        await markEventIgnored(eventId, `ignored ${webhookType}`);
         return;
       }
 

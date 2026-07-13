@@ -2,17 +2,24 @@ const { ObjectId } = require('mongodb');
 const { getCallEventsCollection, isMongoConfigured } = require('../services/mongo');
 const logger = require('../utils/logger');
 
+function unwrapWebhookBody(body) {
+  return body?.body?.['call-summary'] || body?.body?.webhookType ? body.body : body;
+}
+
 function getPayloadCallId(body) {
+  const payload = unwrapWebhookBody(body) || {};
+
   return (
-    body?.data?.callId ||
-    body?.['customer-data']?.callId ||
-    body?.['room-data']?.['session-id'] ||
+    payload?.data?.callId ||
+    payload?.['customer-data']?.callId ||
+    payload?.['room-data']?.['session-id'] ||
     null
   );
 }
 
 function getWebhookType(body) {
-  return body?.webhookType || (body?.['call-summary'] ? 'call-summary' : 'unknown');
+  const payload = unwrapWebhookBody(body) || {};
+  return payload?.webhookType || (payload?.['call-summary'] ? 'call-summary' : 'unknown');
 }
 
 function buildDedupeKey({ callId, webhookType, body }) {
@@ -204,6 +211,7 @@ async function markLeadFailed(eventId, { externalId, leadId, requestPayload, err
 module.exports = {
   getPayloadCallId,
   getWebhookType,
+  unwrapWebhookBody,
   saveIncomingWebhook,
   markEventIgnored,
   markEventProcessing,

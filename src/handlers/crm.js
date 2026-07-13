@@ -67,20 +67,91 @@ function trimNoteEntry(value) {
   return value.slice(0, 500);
 }
 
+function isYes(value) {
+  return value === 'yes' || value === true;
+}
+
+function getEnvValue(name, fallback) {
+  return process.env[name] || fallback;
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
 function buildInternalNoteEntries(parsed) {
-  return [
+  const genericNotes = [
     parsed.callSummaryText && `VideoSDK call summary: ${parsed.callSummaryText}`,
     [
       parsed.callOutcome && `Outcome: ${parsed.callOutcome}`,
+      parsed.gstCallStatus && `Call status: ${parsed.gstCallStatus}`,
       parsed.interestLevel && `Interest: ${parsed.interestLevel}`,
       parsed.offerInterest && `Offer interest: ${parsed.offerInterest}`,
       parsed.salesCallbackRequired && 'Sales callback required',
+      parsed.isRightBusiness && `Right business: ${parsed.isRightBusiness}`,
+      parsed.isNeedCallback && `Callback needed: ${parsed.isNeedCallback}`,
+      parsed.demoRequested && `Demo requested: ${parsed.demoRequested}`,
       parsed.callbackTime && `Callback time: ${parsed.callbackTime}`,
     ].filter(Boolean).join('. '),
+    parsed.gstStatus && `GST status: ${parsed.gstStatus}`,
+    parsed.currentInvoicingPlatform && `Current invoicing platform: ${parsed.currentInvoicingPlatform}`,
+    parsed.requirementType && `Requirement type: ${parsed.requirementType}`,
+    parsed.businessNature && `Business nature: ${parsed.businessNature}`,
+    parsed.leadPriority && `Lead priority: ${parsed.leadPriority}`,
+    parsed.businessName && `Business name: ${parsed.businessName}`,
+    parsed.businessDescription && `Business description: ${parsed.businessDescription}`,
     parsed.importantNotes && `Important notes: ${parsed.importantNotes}`,
     parsed.recommendedAction && `Recommended action: ${parsed.recommendedAction}`,
     parsed.callId && `VideoSDK callId: ${parsed.callId}`,
-  ].filter(Boolean).map(trimNoteEntry);
+  ];
+
+  return genericNotes.filter(Boolean).map(trimNoteEntry);
+}
+
+function buildGstTags(parsed) {
+  return uniqueValues([
+    isYes(parsed.isRightBusiness) && getEnvValue('GST_TAG_IDENTITY_CONFIRMED', 'Identity Confirmed'),
+    isYes(parsed.invoicingAndBilling) && getEnvValue('GST_TAG_INVOICING_BILLING', 'invoicing and billing requirement'),
+    isYes(parsed.completeAccounting) && getEnvValue('GST_TAG_COMPLETE_ACCOUNTING', 'complete accounting requirement'),
+    isYes(parsed.demoRequested) && getEnvValue('GST_TAG_AI_DEMO_REQUESTED', 'AI Demo Requested'),
+    parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback) && getEnvValue('GST_TAG_SALES_CALLBACK', 'Sales Person callback'),
+  ]);
+}
+
+function getGstStage(parsed) {
+  if (parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback)) {
+    return getEnvValue('GST_STAGE_SALES_CALLBACK', '1.g AI Contact - Sales Person Callback');
+  }
+
+  if (isYes(parsed.isRightBusiness)) {
+    return getEnvValue('GST_STAGE_IDENTITY_CONFIRMED', '1.e AI Contact - Identity Confirmed');
+  }
+
+  return null;
+}
+
+function buildGstPatchLeadPayload(parsed) {
+  const pipeline = process.env.REFRENS_DEFAULT_PIPELINE || 'Sales Pipeline';
+  const stage = getGstStage(parsed);
+  const tagsAdd = buildGstTags(parsed);
+  const noteEntries = buildInternalNoteEntries(parsed);
+  const payload = {
+    addInternalNotes: {
+      body: noteEntries.length ? noteEntries : ['GST VideoSDK call summary received.'],
+      clientRequestId: buildClientRequestId(parsed),
+    },
+  };
+
+  if (stage) {
+    payload.pipeline = pipeline;
+    payload.stage = stage;
+  }
+
+  if (tagsAdd.length) {
+    payload.tagsAdd = tagsAdd;
+  }
+
+  return payload;
 }
 
 function buildCreateLeadPayload(parsed) {
@@ -110,6 +181,10 @@ function buildCreateLeadPayload(parsed) {
 }
 
 function buildPatchLeadPayload(parsed) {
+  if (parsed.agentType === 'gst') {
+    return buildGstPatchLeadPayload(parsed);
+  }
+
   const pipeline = process.env.REFRENS_DEFAULT_PIPELINE || 'Sales Pipeline';
   const stage = process.env.REFRENS_DEFAULT_STAGE || 'Contacted';
   const noteEntries = buildInternalNoteEntries(parsed);
@@ -216,7 +291,9 @@ async function patchLeadInCrm(leadId, parsed) {
     url,
     pipeline: payload.pipeline,
     stage: payload.stage,
+    tagsAdd: payload.tagsAdd,
     callOutcome: parsed.callOutcome,
+    gstCallStatus: parsed.gstCallStatus,
   });
 
   try {
@@ -261,6 +338,7 @@ module.exports = {
   buildExternalId,
   buildCreateLeadPayload,
   buildPatchLeadPayload,
+  buildGstPatchLeadPayload,
   createLeadInCrm,
   getLeadInCrm,
   patchLeadInCrm,

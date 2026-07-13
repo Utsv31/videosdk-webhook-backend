@@ -54,6 +54,14 @@ REFRENS_API_BASE_URL=https://api.refrens.com
 REFRENS_BUSINESS_SLUG=crm-lead-create
 REFRENS_DEFAULT_PIPELINE=Sales Pipeline
 REFRENS_DEFAULT_STAGE=Contacted
+VIDEOSDK_GST_AGENT_IDS=ag_n8irvh
+GST_TAG_IDENTITY_CONFIRMED=Identity Confirmed
+GST_TAG_INVOICING_BILLING=invoicing and billing requirement
+GST_TAG_COMPLETE_ACCOUNTING=complete accounting requirement
+GST_TAG_AI_DEMO_REQUESTED=AI Demo Requested
+GST_TAG_SALES_CALLBACK=Sales Person callback
+GST_STAGE_IDENTITY_CONFIRMED=1.e AI Contact - Identity Confirmed
+GST_STAGE_SALES_CALLBACK=1.g AI Contact - Sales Person Callback
 MONGODB_URI=mongodb+srv://<db_username>:<db_password>@cluster0.qdrculk.mongodb.net/videosdk_crm?retryWrites=true&w=majority&appName=Cluster0
 MONGODB_DB_NAME=videosdk_crm
 MONGODB_EVENTS_COLLECTION=call_events
@@ -125,6 +133,30 @@ externalId = videosdk-{callId}
 ```
 
 That makes webhook retries idempotent at the Refrens lead-create API level.
+
+## GST Agent Flow
+
+GST summary webhooks are detected when the `agentId` is listed in `VIDEOSDK_GST_AGENT_IDS`, or when the summary contains GST-specific fields such as `call_status`, `gst_status`, or `lead_priority`.
+
+GST calls are patch-only:
+
+- If `refrensLeadId` exists and the Refrens lead is found, the backend patches the existing lead.
+- If `refrensLeadId` is missing, the event is stored and skipped.
+- If `refrensLeadId` is provided but Refrens returns not found, the event is stored and skipped.
+- GST calls never create fallback leads.
+
+GST patch behavior:
+
+- Always appends the VideoSDK summary as internal notes.
+- Adds `GST_TAG_IDENTITY_CONFIRMED` when `is_right_business` is `yes`.
+- Adds `GST_TAG_INVOICING_BILLING` when `invoicing_and_billing` is `yes`.
+- Adds `GST_TAG_COMPLETE_ACCOUNTING` when `complete_accounting` is `yes`.
+- Adds `GST_TAG_AI_DEMO_REQUESTED` when `demo_requested` is `yes`.
+- Adds `GST_TAG_SALES_CALLBACK` when `call_status` is `busy` and callback is needed.
+- Moves to `GST_STAGE_SALES_CALLBACK` for busy + callback-needed calls.
+- Otherwise moves to `GST_STAGE_IDENTITY_CONFIRMED` when identity is confirmed.
+
+Tags are sent with Refrens `tagsAdd`, which expects existing tag names. Refrens resolves the tag names internally; tag ids are not sent by this backend.
 
 ## Refrens Lead Create And Patch
 
