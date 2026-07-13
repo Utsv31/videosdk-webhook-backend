@@ -54,6 +54,7 @@ async function saveIncomingWebhook(body) {
         refrens: {
           attempted: false,
           success: false,
+          action: null,
           externalId: null,
           leadId: null,
           statusCode: null,
@@ -142,8 +143,27 @@ async function markLeadCreated(eventId, { externalId, requestPayload, result }) 
       'processing.lastError': null,
       'refrens.attempted': true,
       'refrens.success': true,
+      'refrens.action': result?.action || 'create-lead',
       'refrens.externalId': externalId,
       'refrens.leadId': extractRefrensLeadId(result),
+      'refrens.statusCode': result?.status || null,
+      'refrens.requestPayload': requestPayload,
+      'refrens.responsePayload': result,
+    },
+  });
+}
+
+async function markLeadPatched(eventId, { leadId, requestPayload, result }) {
+  return updateEvent(eventId, {
+    $set: {
+      'processing.status': 'processed',
+      'processing.processedAt': new Date(),
+      'processing.lastError': null,
+      'refrens.attempted': true,
+      'refrens.success': true,
+      'refrens.action': result?.action || 'patch-lead',
+      'refrens.externalId': result?.data?.data?.externalId || result?.data?.externalId || null,
+      'refrens.leadId': leadId || extractRefrensLeadId(result),
       'refrens.statusCode': result?.status || null,
       'refrens.requestPayload': requestPayload,
       'refrens.responsePayload': result,
@@ -163,7 +183,7 @@ async function markLeadSkipped(eventId, reason) {
   });
 }
 
-async function markLeadFailed(eventId, { externalId, requestPayload, error }) {
+async function markLeadFailed(eventId, { externalId, leadId, requestPayload, error }) {
   return updateEvent(eventId, {
     $set: {
       'processing.status': 'failed',
@@ -171,7 +191,9 @@ async function markLeadFailed(eventId, { externalId, requestPayload, error }) {
       'processing.processedAt': new Date(),
       'refrens.attempted': true,
       'refrens.success': false,
+      'refrens.action': error?.action || null,
       'refrens.externalId': externalId || null,
+      'refrens.leadId': leadId || error?.leadId || null,
       'refrens.statusCode': error?.response?.status || null,
       'refrens.requestPayload': requestPayload || null,
       'refrens.responsePayload': error?.response?.data || null,
@@ -187,6 +209,7 @@ module.exports = {
   markEventProcessing,
   markEventParsed,
   markLeadCreated,
+  markLeadPatched,
   markLeadSkipped,
   markLeadFailed,
 };

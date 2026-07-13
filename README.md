@@ -1,6 +1,6 @@
 # VideoSDK Webhook Backend
 
-Node.js/Express backend for listening to VideoSDK call webhooks and creating Refrens CRM leads from positive call summaries.
+Node.js/Express backend for listening to VideoSDK call webhooks, creating Refrens CRM leads from positive call summaries, and updating existing Refrens leads when a lead id is supplied.
 
 AiSensy/WhatsApp is intentionally disabled for now. The current flow focuses only on webhook listening and Refrens CRM lead creation.
 
@@ -12,9 +12,11 @@ AiSensy/WhatsApp is intentionally disabled for now. The current flow focuses onl
 4. Every webhook is saved to MongoDB in `call_events`.
 5. A payload containing `body["call-summary"]` is parsed asynchronously.
 6. The backend updates MongoDB with parsed summary data and positive-call decision.
-7. For positive calls, it creates a new Refrens lead using the summary webhook data.
-8. The backend updates MongoDB with the Refrens request/response or error.
-9. For non-positive calls, it marks the MongoDB record as skipped.
+7. If the summary contains a valid `refrensLeadId`, the backend verifies the lead exists and patches that existing Refrens lead.
+8. If the supplied `refrensLeadId` is not found, the backend falls back to the create path for positive calls.
+9. If no `refrensLeadId` exists, positive calls create a new Refrens lead using the summary webhook data.
+10. The backend updates MongoDB with the Refrens action, request/response, status code, and error if any.
+11. For non-positive calls without an existing Refrens lead, it marks the MongoDB record as skipped.
 
 ## Positive Call Criteria
 
@@ -106,7 +108,17 @@ Processed payload:
 
 - `body["call-summary"]` exists
 
-The backend ignores `customer-data.crm_lead_id`. It creates a fresh lead using a stable `externalId` derived from the VideoSDK call:
+To update an existing lead, pass the Refrens API lead id in VideoSDK metadata/customer data:
+
+```json
+{
+  "refrensLeadId": "6a453176001e6e0012f731be"
+}
+```
+
+The backend also accepts a valid 24-character ObjectId in `customer-data.crm_lead_id`, but `refrensLeadId` is the preferred name because it clearly refers to the Refrens API `leadId`.
+
+If no existing lead id is supplied, the backend creates a fresh lead using a stable `externalId` derived from the VideoSDK call:
 
 ```text
 externalId = videosdk-{callId}
@@ -114,7 +126,7 @@ externalId = videosdk-{callId}
 
 That makes webhook retries idempotent at the Refrens lead-create API level.
 
-## Refrens Lead Creation
+## Refrens Lead Create And Patch
 
 The CRM module posts to:
 
@@ -127,6 +139,27 @@ With the current production defaults, that resolves to:
 ```text
 POST https://api.refrens.com/api/v1/businesses/crm-lead-create/leads
 ```
+
+When `refrensLeadId` is supplied, the CRM module first checks:
+
+```text
+GET {REFRENS_API_BASE_URL}/api/v1/businesses/{REFRENS_BUSINESS_SLUG}/leads/{leadId}
+```
+
+If found, it patches:
+
+```text
+PATCH {REFRENS_API_BASE_URL}/api/v1/businesses/{REFRENS_BUSINESS_SLUG}/leads/{leadId}
+```
+
+For now, PATCH moves the lead to:
+
+```text
+Pipeline: Sales Pipeline
+Stage: Contacted
+```
+
+and appends VideoSDK summary details as internal notes using `addInternalNotes` with a stable `clientRequestId`.
 
 The payload contains:
 
@@ -165,6 +198,7 @@ Each document stores:
 - `processing.lastError`
 - `refrens.attempted`
 - `refrens.success`
+- `refrens.action`
 - `refrens.externalId`
 - `refrens.leadId`
 - `refrens.statusCode`

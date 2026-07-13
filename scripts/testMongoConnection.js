@@ -33,6 +33,7 @@ async function main() {
     refrens: {
       attempted: false,
       success: false,
+      action: null,
       externalId: null,
       leadId: null,
       statusCode: null,

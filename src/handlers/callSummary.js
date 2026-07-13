@@ -1,14 +1,42 @@
-const { createLeadInCrm } = require('./crm');
+const {
+  createLeadInCrm,
+  getLeadInCrm,
+  patchLeadInCrm,
+  isLeadNotFoundError,
+} = require('./crm');
 const {
   markEventParsed,
   markLeadSkipped,
   markLeadCreated,
+  markLeadPatched,
   markLeadFailed,
 } = require('../repositories/callEvents');
 const logger = require('../utils/logger');
 
 function isCallSummaryPayload(body) {
   return Boolean(body && body['call-summary']);
+}
+
+function normalizeRefrensLeadId(value) {
+  if (!value) {
+    return null;
+  }
+
+  const leadId = String(value).trim();
+  return /^[a-f\d]{24}$/i.test(leadId) ? leadId : null;
+}
+
+function getRefrensLeadId(customerData, roomData, body) {
+  return normalizeRefrensLeadId(
+    customerData.refrensLeadId ||
+    customerData.crm_lead_id ||
+    customerData.leadId ||
+    customerData.metaData?.refrensLeadId ||
+    customerData.metaData?.crm_lead_id ||
+    roomData.refrensLeadId ||
+    body?.data?.metaData?.refrensLeadId ||
+    body?.data?.metaData?.crm_lead_id,
+  );
 }
 
 function parseCallSummary(body) {
@@ -40,6 +68,7 @@ function parseCallSummary(body) {
     agentId: roomData.agentId,
     meetingId: roomData['meeting-id'],
     sessionId: roomData['session-id'],
+    refrensLeadId: getRefrensLeadId(customerData, roomData, body),
   };
 }
 
@@ -68,10 +97,53 @@ async function processCallSummary(body, options = {}) {
     interestLevel: parsed.interestLevel,
     offerInterest: parsed.offerInterest,
     salesCallbackRequired: parsed.salesCallbackRequired,
+    refrensLeadId: parsed.refrensLeadId,
     shouldCreateLead,
   });
 
   await markEventParsed(eventId, parsed, shouldCreateLead);
+
+  if (parsed.refrensLeadId) {
+    try {
+      await getLeadInCrm(parsed.refrensLeadId);
+      const result = await patchLeadInCrm(parsed.refrensLeadId, parsed);
+
+      await markLeadPatched(eventId, {
+        leadId: parsed.refrensLeadId,
+        requestPayload: result.requestPayload,
+        result,
+      });
+
+      return result;
+    } catch (error) {
+      if (!isLeadNotFoundError(error)) {
+        await markLeadFailed(eventId, {
+          leadId: parsed.refrensLeadId,
+          requestPayload: error.requestPayload,
+          error,
+        });
+
+        throw error;
+      }
+
+      logger.warn('Refrens lead id from VideoSDK payload was not found; falling back to create path', {
+        callId: parsed.callId,
+        refrensLeadId: parsed.refrensLeadId,
+      });
+
+      if (!shouldCreateLead) {
+        await markLeadSkipped(eventId, 'refrens lead not found and non-positive call');
+
+        return {
+          success: true,
+          skipped: true,
+          reason: 'refrens lead not found and non-positive call',
+          callId: parsed.callId,
+          refrensLeadId: parsed.refrensLeadId,
+        };
+      }
+    }
+  }
 
   if (!shouldCreateLead) {
     logger.info('Skipping CRM lead creation for non-positive call', {
@@ -103,6 +175,7 @@ async function processCallSummary(body, options = {}) {
   } catch (error) {
     await markLeadFailed(eventId, {
       externalId: error.externalId,
+      leadId: error.leadId,
       requestPayload: error.requestPayload,
       error,
     });
@@ -113,6 +186,7 @@ async function processCallSummary(body, options = {}) {
 
 module.exports = {
   isCallSummaryPayload,
+  normalizeRefrensLeadId,
   parseCallSummary,
   isPositiveCall,
   processCallSummary,
