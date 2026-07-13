@@ -117,7 +117,6 @@ function buildPatchLeadPayload(parsed) {
   return {
     pipeline,
     stage,
-    details: buildLeadDetails(parsed),
     addInternalNotes: {
       body: noteEntries.length ? noteEntries : ['VideoSDK call summary received.'],
       clientRequestId: buildClientRequestId(parsed),

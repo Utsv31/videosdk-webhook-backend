@@ -161,6 +161,8 @@ Stage: Contacted
 
 and appends VideoSDK summary details as internal notes using `addInternalNotes` with a stable `clientRequestId`.
 
+PATCH does not update `details`; call summaries are kept as internal notes on existing leads. New lead creation still writes summary content into `details` because create does not support internal notes.
+
 The payload contains:
 
 - `externalId`
