@@ -62,7 +62,6 @@ function getRefrensLeadId(customerData, roomData, body) {
 function hasGstSummaryShape(summary) {
   return Boolean(
     summary.call_status ||
-    summary.gst_status ||
     summary.current_invoicing_platform ||
     summary.requirement_type ||
     summary.lead_priority,
@@ -84,10 +83,6 @@ function normalizeEnumValue(value) {
 function normalizeYesNo(value) {
   const normalized = normalizeEnumValue(value);
   return normalized === 'true' ? 'yes' : normalized === 'false' ? 'no' : normalized;
-}
-
-function firstPresentValue(...values) {
-  return values.find((value) => value !== undefined && value !== null && value !== '');
 }
 
 function getConfiguredGstAgentIds() {
@@ -121,7 +116,6 @@ function parseCallSummary(body) {
     retryAttempt: customerData.retryAttempt || customerData.retry_attempt,
     retryFlow: customerData.retryFlow || customerData.retry_flow,
     ageOfBusiness: customerData.age_of_business,
-    isGstRegisteredInput: customerData.is_gst_registered,
     campaign: customerData.campaign || summary.campaign,
 
     callOutcome: summary.call_outcome,
@@ -140,19 +134,8 @@ function parseCallSummary(body) {
 
     agentType,
     gstCallStatus: normalizeEnumValue(summary.call_status),
-    gstStatus: normalizeEnumValue(firstPresentValue(
-      summary.gst_status,
-      summary.is_gst_registred,
-      summary.is_gst_registered,
-      summary.is_GST_registered,
-    )),
     isRightBusiness: normalizeYesNo(summary.is_right_business),
     isNeedCallback: normalizeYesNo(summary.is_need_callback || summary.is_callback_needed),
-    isGstRegistered: normalizeYesNo(firstPresentValue(
-      summary.is_gst_registred,
-      summary.is_gst_registered,
-      summary.is_GST_registered,
-    )),
     invoicingAndBilling: normalizeYesNo(summary.invoicing_and_billing),
     completeAccounting: normalizeYesNo(summary.complete_accounting),
     demoRequested: normalizeYesNo(summary.demo_requested),

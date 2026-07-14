@@ -10,7 +10,6 @@ const GST_PATCH_CONFIG = {
   },
   stages: {
     identityConfirmed: '1.e AI Contact - Identity Confirmed',
-    gstConfirmed: '1.f AI Contact - GST Confirmed',
     salesCallback: '1.g AI Contact - Sales Person Callback',
   },
 };
@@ -85,13 +84,6 @@ function isYes(value) {
   return value === 'yes' || value === true;
 }
 
-function isGstConfirmed(parsed) {
-  return (
-    isYes(parsed.isGstRegistered) ||
-    parsed.gstStatus === 'registered'
-  );
-}
-
 function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -106,14 +98,12 @@ function buildInternalNoteEntries(parsed) {
       parsed.offerInterest && `Offer interest: ${parsed.offerInterest}`,
       parsed.salesCallbackRequired && 'Sales callback required',
       parsed.isRightBusiness && `Right business: ${parsed.isRightBusiness}`,
-      parsed.isGstRegistered && `GST registered: ${parsed.isGstRegistered}`,
       parsed.isNeedCallback && `Callback needed: ${parsed.isNeedCallback}`,
       parsed.demoRequested && `Demo requested: ${parsed.demoRequested}`,
       parsed.callbackTime && `Callback time: ${parsed.callbackTime}`,
       parsed.retryAttempt && `Retry attempt: ${parsed.retryAttempt}`,
       parsed.retryFlow && `Retry flow: ${parsed.retryFlow}`,
     ].filter(Boolean).join('. '),
-    parsed.gstStatus && `GST status: ${parsed.gstStatus}`,
     parsed.currentInvoicingPlatform && `Current invoicing platform: ${parsed.currentInvoicingPlatform}`,
     parsed.requirementType && `Requirement type: ${parsed.requirementType}`,
     parsed.businessNature && `Business nature: ${parsed.businessNature}`,
@@ -140,10 +130,6 @@ function buildGstTags(parsed) {
 function getGstStage(parsed) {
   if (parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback)) {
     return GST_PATCH_CONFIG.stages.salesCallback;
-  }
-
-  if (isYes(parsed.isRightBusiness) && isGstConfirmed(parsed)) {
-    return GST_PATCH_CONFIG.stages.gstConfirmed;
   }
 
   if (isYes(parsed.isRightBusiness)) {

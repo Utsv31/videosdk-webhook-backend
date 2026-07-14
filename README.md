@@ -140,7 +140,7 @@ That makes webhook retries idempotent at the Refrens lead-create API level.
 
 ## GST Agent Flow
 
-GST summary webhooks are detected when `room-data.agentId` matches `GST_AGENT_ID`, or when the summary contains GST-specific fields such as `call_status`, `gst_status`, or `lead_priority`.
+GST summary webhooks are detected when `room-data.agentId` matches `GST_AGENT_ID`, or when the summary contains GST-specific fields such as `call_status`, `current_invoicing_platform`, `requirement_type`, or `lead_priority`.
 
 Ad hoc and GST calls are patch-only:
 
@@ -154,7 +154,7 @@ GST patch behavior:
 - Always appends the VideoSDK summary as internal notes.
 - Always adds `Voice AI attempt` for every summary webhook that patches or creates a lead.
 - Adds `Identity Confirmed` when `is_right_business` is `yes`.
-- Does not add a `GST Confirmed` tag for GST cohort leads.
+- Does not check GST registration status from webhook fields.
 - Does not add requirement tags for `invoicing_and_billing` or `complete_accounting` for now; those fields remain visible in internal notes.
 - Adds `AI Demo Requested` when `demo_requested` is `yes`.
 - Adds `Sales Person callback` when `call_status` is `busy` and callback is needed.
@@ -162,10 +162,9 @@ GST patch behavior:
 GST stage movement:
 
 - `Identity Confirmed` -> `1.e AI Contact - Identity Confirmed`
-- `Identity Confirmed + GST Confirmed` -> `1.f AI Contact - GST Confirmed`
 - `Sales Person Callback` -> `1.g AI Contact - Sales Person Callback`
 - `Identity Confirmed + Sales Person Callback` -> `1.g AI Contact - Sales Person Callback`
-- `Sales Person Callback + Identity Confirmed + GST Confirmed` -> `1.g AI Contact - Sales Person Callback`
+- `Sales Person Callback + Identity Confirmed` -> `1.g AI Contact - Sales Person Callback`
 
 GST agent id and default GST caller number are configured through env:
 
@@ -257,7 +256,6 @@ The retry dispatch payload is rebuilt from the original summary webhook customer
 - `metadata.name`
 - `metadata.business_name`
 - `metadata.age_of_business`
-- `metadata.is_gst_registered`
 - `metadata.webhook_url`
 
 Tags are sent with Refrens `tagsAdd`, which expects existing tag names. Refrens resolves the tag names internally; tag ids are not sent by this backend.

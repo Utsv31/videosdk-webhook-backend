@@ -34,13 +34,6 @@ function isNo(value) {
   return value === 'no' || value === false;
 }
 
-function isGstConfirmed(parsed) {
-  return (
-    isYes(parsed.isGstRegistered) ||
-    parsed.gstStatus === 'registered'
-  );
-}
-
 function getGstRoutingRuleId(parsed) {
   return process.env.GST_ROUTING_RULE_ID || parsed.routingRuleId || DEFAULT_GST_ROUTING_RULE_ID;
 }
@@ -89,7 +82,6 @@ function buildGstRetryDispatchPayload(parsed, nextAttempt) {
       name: parsed.customerName || '',
       business_name: parsed.businessName || '',
       age_of_business: parsed.ageOfBusiness || parsed.businessAge || '',
-      is_gst_registered: parsed.isGstRegisteredInput || '',
       webhook_url: webhookUrl,
     },
   };
@@ -114,13 +106,6 @@ function getGstRetryDecision(parsed) {
     return {
       shouldRetry: false,
       reason: 'callback needed; route to sales and stop ai retries',
-    };
-  }
-
-  if (isGstConfirmed(parsed)) {
-    return {
-      shouldRetry: false,
-      reason: 'gst confirmed; route normal lead and stop ai retries',
     };
   }
 
