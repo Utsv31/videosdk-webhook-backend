@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "check": "node --check src/index.js && node --check src/routes/webhook.js && node --check src/handlers/callSummary.js && node --check src/handlers/crm.js && node --check src/services/mongo.js && node --check src/repositories/callEvents.js && node --check src/utils/logger.js && node --check src/utils/validateWebhook.js && node --check scripts/testMongoConnection.js",
+    "check": "node --check src/index.js && node --check src/routes/webhook.js && node --check src/handlers/callSummary.js && node --check src/handlers/crm.js && node --check src/handlers/gstRetry.js && node --check src/services/mongo.js && node --check src/services/videosdk.js && node --check src/repositories/callEvents.js && node --check src/repositories/retryJobs.js && node --check src/workers/retryWorker.js && node --check src/utils/businessHours.js && node --check src/utils/logger.js && node --check src/utils/validateWebhook.js && node --check scripts/testMongoConnection.js",
     "test:mongo": "node scripts/testMongoConnection.js"
   },
   "keywords": [

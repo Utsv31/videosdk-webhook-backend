@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const webhookRouter = require('./routes/webhook');
+const { startRetryWorker } = require('./workers/retryWorker');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -51,4 +52,6 @@ app.listen(port, () => {
     port,
     nodeEnv: process.env.NODE_ENV || 'development',
   });
+
+  startRetryWorker();
 });

@@ -4,8 +4,7 @@ const logger = require('../utils/logger');
 const GST_PATCH_CONFIG = {
   tags: {
     identityConfirmed: 'Identity Confirmed',
-    invoicingBilling: 'invoicing and billing requirement',
-    completeAccounting: 'complete accounting requirement',
+    gstConfirmed: 'GST Confirmed',
     aiDemoRequested: 'AI Demo Requested',
     salesCallback: 'Sales Person callback',
   },
@@ -85,6 +84,14 @@ function isYes(value) {
   return value === 'yes' || value === true;
 }
 
+function isGstConfirmed(parsed) {
+  return (
+    isYes(parsed.isGstRegistered) ||
+    isYes(parsed.isGstRegisteredInput) ||
+    parsed.gstStatus === 'registered'
+  );
+}
+
 function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -99,9 +106,12 @@ function buildInternalNoteEntries(parsed) {
       parsed.offerInterest && `Offer interest: ${parsed.offerInterest}`,
       parsed.salesCallbackRequired && 'Sales callback required',
       parsed.isRightBusiness && `Right business: ${parsed.isRightBusiness}`,
+      parsed.isGstRegistered && `GST registered: ${parsed.isGstRegistered}`,
       parsed.isNeedCallback && `Callback needed: ${parsed.isNeedCallback}`,
       parsed.demoRequested && `Demo requested: ${parsed.demoRequested}`,
       parsed.callbackTime && `Callback time: ${parsed.callbackTime}`,
+      parsed.retryAttempt && `Retry attempt: ${parsed.retryAttempt}`,
+      parsed.retryFlow && `Retry flow: ${parsed.retryFlow}`,
     ].filter(Boolean).join('. '),
     parsed.gstStatus && `GST status: ${parsed.gstStatus}`,
     parsed.currentInvoicingPlatform && `Current invoicing platform: ${parsed.currentInvoicingPlatform}`,
@@ -121,8 +131,7 @@ function buildInternalNoteEntries(parsed) {
 function buildGstTags(parsed) {
   return uniqueValues([
     isYes(parsed.isRightBusiness) && GST_PATCH_CONFIG.tags.identityConfirmed,
-    isYes(parsed.invoicingAndBilling) && GST_PATCH_CONFIG.tags.invoicingBilling,
-    isYes(parsed.completeAccounting) && GST_PATCH_CONFIG.tags.completeAccounting,
+    isGstConfirmed(parsed) && GST_PATCH_CONFIG.tags.gstConfirmed,
     isYes(parsed.demoRequested) && GST_PATCH_CONFIG.tags.aiDemoRequested,
     parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback) && GST_PATCH_CONFIG.tags.salesCallback,
   ]);
@@ -133,7 +142,7 @@ function getGstStage(parsed) {
     return GST_PATCH_CONFIG.stages.salesCallback;
   }
 
-  if (isYes(parsed.isRightBusiness)) {
+  if (isYes(parsed.isRightBusiness) || isGstConfirmed(parsed)) {
     return GST_PATCH_CONFIG.stages.identityConfirmed;
   }
 

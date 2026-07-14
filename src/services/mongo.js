@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 let client;
 let db;
 let indexesReady = false;
+let retryIndexesReady = false;
 
 function isMongoConfigured() {
   return Boolean(process.env.MONGODB_URI);
@@ -54,12 +55,33 @@ async function getCallEventsCollection() {
   return collection;
 }
 
+async function getRetryJobsCollection() {
+  const database = await getDb();
+
+  if (!database) {
+    return null;
+  }
+
+  const collectionName = process.env.MONGODB_RETRY_JOBS_COLLECTION || 'call_retry_jobs';
+  const collection = database.collection(collectionName);
+
+  if (!retryIndexesReady) {
+    await collection.createIndex({ dedupeKey: 1 }, { unique: true });
+    await collection.createIndex({ status: 1, scheduledAt: 1 });
+    await collection.createIndex({ callId: 1, agentType: 1 });
+    retryIndexesReady = true;
+  }
+
+  return collection;
+}
+
 async function closeMongo() {
   if (client) {
     await client.close();
     client = null;
     db = null;
     indexesReady = false;
+    retryIndexesReady = false;
   }
 }
 
@@ -67,5 +89,6 @@ module.exports = {
   isMongoConfigured,
   getDb,
   getCallEventsCollection,
+  getRetryJobsCollection,
   closeMongo,
 };

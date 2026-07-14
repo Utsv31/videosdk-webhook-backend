@@ -3,7 +3,7 @@ const { getCallEventsCollection, isMongoConfigured } = require('../services/mong
 const logger = require('../utils/logger');
 
 function unwrapWebhookBody(body) {
-  return body?.body?.['call-summary'] || body?.body?.webhookType ? body.body : body;
+  return body;
 }
 
 function getPayloadCallId(body) {
@@ -208,6 +208,27 @@ async function markLeadFailed(eventId, { externalId, leadId, requestPayload, err
   });
 }
 
+async function markRetryDecision(eventId, decision) {
+  return updateEvent(eventId, {
+    $set: {
+      retry: {
+        shouldRetry: decision?.shouldRetry === true,
+        reason: decision?.reason || null,
+        retryFlow: decision?.retryFlow || null,
+        currentAttempt: decision?.currentAttempt || null,
+        nextAttempt: decision?.nextAttempt || null,
+        requestedScheduledAt: decision?.requestedScheduledAt || null,
+        requestedScheduledAtIst: decision?.requestedScheduledAtIst || null,
+        scheduledAt: decision?.scheduledAt || null,
+        scheduledAtIst: decision?.scheduledAtIst || null,
+        businessHoursAdjusted: decision?.businessHoursAdjusted === true,
+        retryJobId: decision?.job?._id?.toString() || null,
+        cancelledJobs: decision?.cancelledJobs || 0,
+      },
+    },
+  });
+}
+
 module.exports = {
   getPayloadCallId,
   getWebhookType,
@@ -220,4 +241,5 @@ module.exports = {
   markLeadPatched,
   markLeadSkipped,
   markLeadFailed,
+  markRetryDecision,
 };

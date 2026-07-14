@@ -53,9 +53,20 @@ REFRENS_API_BASE_URL=https://api.refrens.com
 REFRENS_BUSINESS_SLUG=crm-lead-create
 REFRENS_DEFAULT_PIPELINE=Sales Pipeline
 REFRENS_DEFAULT_STAGE=Contacted
+GST_AGENT_ID=ag_n8irvh
+GST_SIP_CALL_FROM=+918035017510
+GST_ROUTING_RULE_ID=rr_fogwqz
+VIDEOSDK_AUTH_TOKEN=
+VIDEOSDK_API_BASE_URL=https://api.videosdk.live
+VIDEOSDK_WEBHOOK_URL=https://videosdk-webhook-backend.onrender.com/webhook
+RETRY_WORKER_ENABLED=true
+RETRY_WORKER_INTERVAL_MS=60000
+CALL_WINDOW_START_HOUR_IST=9
+CALL_WINDOW_END_HOUR_IST=21
 MONGODB_URI=mongodb+srv://<db_username>:<db_password>@cluster0.qdrculk.mongodb.net/videosdk_crm?retryWrites=true&w=majority&appName=Cluster0
 MONGODB_DB_NAME=videosdk_crm
 MONGODB_EVENTS_COLLECTION=call_events
+MONGODB_RETRY_JOBS_COLLECTION=call_retry_jobs
 ```
 
 Optional:
@@ -129,7 +140,7 @@ That makes webhook retries idempotent at the Refrens lead-create API level.
 
 ## GST Agent Flow
 
-GST summary webhooks are detected when the `agentId` is listed in the in-code GST agent map, or when the summary contains GST-specific fields such as `call_status`, `gst_status`, or `lead_priority`.
+GST summary webhooks are detected when `room-data.agentId` matches `GST_AGENT_ID`, or when the summary contains GST-specific fields such as `call_status`, `gst_status`, or `lead_priority`.
 
 Ad hoc and GST calls are patch-only:
 
@@ -142,14 +153,105 @@ GST patch behavior:
 
 - Always appends the VideoSDK summary as internal notes.
 - Adds `Identity Confirmed` when `is_right_business` is `yes`.
-- Adds `invoicing and billing requirement` when `invoicing_and_billing` is `yes`.
-- Adds `complete accounting requirement` when `complete_accounting` is `yes`.
+- Adds `GST Confirmed` when GST registration is confirmed.
+- Does not add requirement tags for `invoicing_and_billing` or `complete_accounting` for now; those fields remain visible in internal notes.
 - Adds `AI Demo Requested` when `demo_requested` is `yes`.
 - Adds `Sales Person callback` when `call_status` is `busy` and callback is needed.
 - Moves to `1.g AI Contact - Sales Person Callback` for busy + callback-needed calls.
-- Otherwise moves to `1.e AI Contact - Identity Confirmed` when identity is confirmed.
+- Otherwise moves to `1.e AI Contact - Identity Confirmed` when identity or GST registration is confirmed.
 
-GST agent ids, tag names, and stage names are kept in code constants instead of Render env variables so Render configuration stays short as more agent flows are added.
+GST agent id and default GST caller number are configured through env:
+
+```env
+GST_AGENT_ID=ag_n8irvh
+GST_SIP_CALL_FROM=+918035017510
+GST_ROUTING_RULE_ID=rr_fogwqz
+```
+
+Tag names and stage names are kept in code constants so the CRM behavior stays versioned with the backend.
+
+## GST Retry Flow
+
+GST retries are handled by this backend, not by the VideoSDK dashboard batch.
+
+Retry rules:
+
+- Total attempts: 3, including the original dashboard call.
+- Standard retry flow: attempt 2 after 2 minutes, attempt 3 after 1 hour.
+- Busy engaged retry flow: attempt 2 after 30 minutes, attempt 3 after 1 hour.
+- Calls are only dispatched between 9 AM and 9 PM IST.
+- If a retry falls outside the call window, it remains queued and is scheduled for the next 9 AM IST call window.
+- Standard retryable `call_status` values are `call_not_picked`, `voicemail`, and `failed`.
+- Busy calls use the busy engaged flow only when `is_right_business=yes` and `is_need_callback=no`.
+- `busy + is_need_callback=yes` does not retry; the lead gets the `Sales Person callback` tag and sales callback stage.
+- `busy/failed + GST registered` does not retry; the lead gets the `GST Confirmed` tag and normal confirmed stage.
+- `busy/failed + is_right_business=yes` without explicit `is_need_callback=no` does not retry; the lead gets the `Identity Confirmed` tag and normal confirmed stage.
+- `failed + is_right_business=yes + is_need_callback=no` follows the standard retry flow.
+- No retry is scheduled for `successful`, `on_hold`, missing phone number, missing `refrensLeadId`, missing webhook URL, or demo requested.
+
+Retry jobs are stored in MongoDB:
+
+```text
+Database: videosdk_crm
+Collection: call_retry_jobs
+```
+
+To see when the next retry call is scheduled for a lead, search by `refrensLeadId` in `call_retry_jobs` and check:
+
+```text
+status
+retryAttempt
+retryFlow
+requestedScheduledAtIst
+scheduledAtIst
+businessHoursAdjusted
+```
+
+Retry jobs are deduped per lead and retry attempt. If a later webhook shows the lead should stop AI calling, such as callback needed, GST confirmed, demo requested, or max attempts reached, pending scheduled retry jobs for that `refrensLeadId` are marked:
+
+```text
+status: cancelled
+```
+
+The original webhook record in `call_events` also stores the retry decision under:
+
+```text
+retry.scheduledAt
+retry.scheduledAtIst
+retry.retryJobId
+retry.businessHoursAdjusted
+retry.cancelledJobs
+```
+
+The retry worker runs inside the same Node service and scans due jobs every minute. It dispatches calls through:
+
+```text
+POST https://api.videosdk.live/v2/sip/call
+```
+
+Required retry env:
+
+```env
+VIDEOSDK_AUTH_TOKEN=
+VIDEOSDK_WEBHOOK_URL=https://videosdk-webhook-backend.onrender.com/webhook
+CALL_WINDOW_START_HOUR_IST=9
+CALL_WINDOW_END_HOUR_IST=21
+```
+
+The retry dispatch payload is rebuilt from the original summary webhook customer data and includes:
+
+- `sipCallFrom`
+- `sipCallTo`
+- `routingRuleId`
+- `metadata.refrensLeadId`
+- `metadata.originalCallId`
+- `metadata.retryAttempt`
+- `metadata.retryFlow`
+- `metadata.name`
+- `metadata.business_name`
+- `metadata.age_of_business`
+- `metadata.is_gst_registered`
+- `metadata.webhook_url`
 
 Tags are sent with Refrens `tagsAdd`, which expects existing tag names. Refrens resolves the tag names internally; tag ids are not sent by this backend.
 

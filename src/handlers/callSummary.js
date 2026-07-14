@@ -10,7 +10,9 @@ const {
   markLeadCreated,
   markLeadPatched,
   markLeadFailed,
+  markRetryDecision,
 } = require('../repositories/callEvents');
+const { scheduleGstRetryIfNeeded } = require('./gstRetry');
 const logger = require('../utils/logger');
 
 const AGENT_TYPES = {
@@ -18,11 +20,8 @@ const AGENT_TYPES = {
   GST: 'gst',
 };
 
-const AGENT_IDS_BY_TYPE = {
-  [AGENT_TYPES.GST]: new Set([
-    'ag_n8irvh',
-  ]),
-};
+const DEFAULT_GST_AGENT_ID = 'ag_n8irvh';
+const DEFAULT_GST_SIP_CALL_FROM = '+918035017510';
 
 const PATCH_ONLY_AGENT_TYPES = new Set([
   AGENT_TYPES.ADHOC,
@@ -30,7 +29,7 @@ const PATCH_ONLY_AGENT_TYPES = new Set([
 ]);
 
 function unwrapWebhookBody(body) {
-  return body?.body?.['call-summary'] ? body.body : body;
+  return body;
 }
 
 function isCallSummaryPayload(body) {
@@ -71,7 +70,7 @@ function hasGstSummaryShape(summary) {
 }
 
 function getAgentType(summary, roomData) {
-  if (roomData.agentId && AGENT_IDS_BY_TYPE[AGENT_TYPES.GST].has(roomData.agentId)) {
+  if (roomData.agentId && getConfiguredGstAgentIds().has(roomData.agentId)) {
     return AGENT_TYPES.GST;
   }
 
@@ -87,18 +86,42 @@ function normalizeYesNo(value) {
   return normalized === 'true' ? 'yes' : normalized === 'false' ? 'no' : normalized;
 }
 
+function firstPresentValue(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== '');
+}
+
+function getConfiguredGstAgentIds() {
+  return new Set(
+    (process.env.GST_AGENT_ID || DEFAULT_GST_AGENT_ID)
+      .split(',')
+      .map((agentId) => agentId.trim())
+      .filter(Boolean),
+  );
+}
+
+function getGstSipCallFrom() {
+  return process.env.GST_SIP_CALL_FROM || DEFAULT_GST_SIP_CALL_FROM;
+}
+
 function parseCallSummary(body) {
   const payload = unwrapWebhookBody(body) || {};
   const summary = payload['call-summary'] || {};
   const customerData = payload['customer-data'] || {};
   const roomData = payload['room-data'] || {};
+  const agentType = getAgentType(summary, roomData);
 
   return {
     callId: customerData.callId,
     customerName: customerData.name,
     businessName: customerData.business_name,
     phone: customerData.sipCallTo,
-    callerPhone: customerData.sipCallFrom,
+    callerPhone: customerData.sipCallFrom || (agentType === AGENT_TYPES.GST ? getGstSipCallFrom() : null),
+    webhookUrl: customerData.webhook_url,
+    routingRuleId: customerData.routingRuleId || customerData.routing_rule_id,
+    retryAttempt: customerData.retryAttempt || customerData.retry_attempt,
+    retryFlow: customerData.retryFlow || customerData.retry_flow,
+    ageOfBusiness: customerData.age_of_business,
+    isGstRegisteredInput: customerData.is_gst_registered,
     campaign: customerData.campaign || summary.campaign,
 
     callOutcome: summary.call_outcome,
@@ -115,11 +138,23 @@ function parseCallSummary(body) {
     recommendedAction: summary.recommended_action,
     callSummaryText: summary.call_summary || summary.summary,
 
-    agentType: getAgentType(summary, roomData),
+    agentType,
     gstCallStatus: normalizeEnumValue(summary.call_status),
-    gstStatus: normalizeEnumValue(summary.gst_status || summary.is_gst_registred),
+    gstStatus: normalizeEnumValue(firstPresentValue(
+      summary.gst_status,
+      summary.is_gst_registred,
+      summary.is_gst_registered,
+      summary.is_GST_registered,
+    )),
     isRightBusiness: normalizeYesNo(summary.is_right_business),
     isNeedCallback: normalizeYesNo(summary.is_need_callback || summary.is_callback_needed),
+    isGstRegistered: normalizeYesNo(firstPresentValue(
+      summary.is_gst_registred,
+      summary.is_gst_registered,
+      summary.is_GST_registered,
+      customerData.is_gst_registered,
+      customerData.is_GST_registered,
+    )),
     invoicingAndBilling: normalizeYesNo(summary.invoicing_and_billing),
     completeAccounting: normalizeYesNo(summary.complete_accounting),
     demoRequested: normalizeYesNo(summary.demo_requested),
@@ -173,6 +208,16 @@ async function processCallSummary(body, options = {}) {
 
   await markEventParsed(eventId, parsed, isPositive);
 
+  async function handleRetryDecision() {
+    if (parsed.agentType !== AGENT_TYPES.GST) {
+      return null;
+    }
+
+    const retryDecision = await scheduleGstRetryIfNeeded(eventId, parsed);
+    await markRetryDecision(eventId, retryDecision);
+    return retryDecision;
+  }
+
   if (parsed.refrensLeadId) {
     try {
       await getLeadInCrm(parsed.refrensLeadId);
@@ -183,6 +228,8 @@ async function processCallSummary(body, options = {}) {
         requestPayload: result.requestPayload,
         result,
       });
+
+      await handleRetryDecision();
 
       return result;
     } catch (error) {
@@ -286,7 +333,10 @@ async function processCallSummary(body, options = {}) {
 
 module.exports = {
   AGENT_TYPES,
-  AGENT_IDS_BY_TYPE,
+  DEFAULT_GST_AGENT_ID,
+  DEFAULT_GST_SIP_CALL_FROM,
+  getConfiguredGstAgentIds,
+  getGstSipCallFrom,
   PATCH_ONLY_AGENT_TYPES,
   isCallSummaryPayload,
   unwrapWebhookBody,
