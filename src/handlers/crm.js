@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 
 const GST_PATCH_CONFIG = {
   tags: {
+    voiceAiAttempt: 'Voice AI attempt',
     identityConfirmed: 'Identity Confirmed',
     gstConfirmed: 'GST Confirmed',
     aiDemoRequested: 'AI Demo Requested',
@@ -130,6 +131,7 @@ function buildInternalNoteEntries(parsed) {
 
 function buildGstTags(parsed) {
   return uniqueValues([
+    GST_PATCH_CONFIG.tags.voiceAiAttempt,
     isYes(parsed.isRightBusiness) && GST_PATCH_CONFIG.tags.identityConfirmed,
     isGstConfirmed(parsed) && GST_PATCH_CONFIG.tags.gstConfirmed,
     isYes(parsed.demoRequested) && GST_PATCH_CONFIG.tags.aiDemoRequested,
@@ -195,7 +197,7 @@ function buildCreateLeadPayload(parsed) {
     pipeline,
     stage,
     leadSource: 'Other',
-    tags: [],
+    tags: [GST_PATCH_CONFIG.tags.voiceAiAttempt],
   };
 }
 
@@ -211,6 +213,7 @@ function buildPatchLeadPayload(parsed) {
   return {
     pipeline,
     stage,
+    tagsAdd: [GST_PATCH_CONFIG.tags.voiceAiAttempt],
     addInternalNotes: {
       body: noteEntries.length ? noteEntries : ['VideoSDK call summary received.'],
       clientRequestId: buildClientRequestId(parsed),

@@ -152,6 +152,7 @@ Ad hoc and GST calls are patch-only:
 GST patch behavior:
 
 - Always appends the VideoSDK summary as internal notes.
+- Always adds `Voice AI attempt` for every summary webhook that patches or creates a lead.
 - Adds `Identity Confirmed` when `is_right_business` is `yes`.
 - Adds `GST Confirmed` when GST registration is confirmed.
 - Does not add requirement tags for `invoicing_and_billing` or `complete_accounting` for now; those fields remain visible in internal notes.
@@ -304,7 +305,7 @@ The payload contains:
 - `pipeline`
 - `stage`
 - `leadSource`
-- `tags: []`
+- `tags`
 
 Dynamic call fields are written into `details` instead of `tags` or `customFields` because the tested Refrens API rejects unknown tags and may reject custom fields if they are not enabled for the business.
 
