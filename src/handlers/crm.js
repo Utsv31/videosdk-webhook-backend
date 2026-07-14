@@ -5,12 +5,12 @@ const GST_PATCH_CONFIG = {
   tags: {
     voiceAiAttempt: 'Voice AI attempt',
     identityConfirmed: 'Identity Confirmed',
-    gstConfirmed: 'GST Confirmed',
     aiDemoRequested: 'AI Demo Requested',
     salesCallback: 'Sales Person callback',
   },
   stages: {
     identityConfirmed: '1.e AI Contact - Identity Confirmed',
+    gstConfirmed: '1.f AI Contact - GST Confirmed',
     salesCallback: '1.g AI Contact - Sales Person Callback',
   },
 };
@@ -88,7 +88,6 @@ function isYes(value) {
 function isGstConfirmed(parsed) {
   return (
     isYes(parsed.isGstRegistered) ||
-    isYes(parsed.isGstRegisteredInput) ||
     parsed.gstStatus === 'registered'
   );
 }
@@ -133,7 +132,6 @@ function buildGstTags(parsed) {
   return uniqueValues([
     GST_PATCH_CONFIG.tags.voiceAiAttempt,
     isYes(parsed.isRightBusiness) && GST_PATCH_CONFIG.tags.identityConfirmed,
-    isGstConfirmed(parsed) && GST_PATCH_CONFIG.tags.gstConfirmed,
     isYes(parsed.demoRequested) && GST_PATCH_CONFIG.tags.aiDemoRequested,
     parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback) && GST_PATCH_CONFIG.tags.salesCallback,
   ]);
@@ -144,7 +142,11 @@ function getGstStage(parsed) {
     return GST_PATCH_CONFIG.stages.salesCallback;
   }
 
-  if (isYes(parsed.isRightBusiness) || isGstConfirmed(parsed)) {
+  if (isYes(parsed.isRightBusiness) && isGstConfirmed(parsed)) {
+    return GST_PATCH_CONFIG.stages.gstConfirmed;
+  }
+
+  if (isYes(parsed.isRightBusiness)) {
     return GST_PATCH_CONFIG.stages.identityConfirmed;
   }
 

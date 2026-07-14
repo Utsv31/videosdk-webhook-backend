@@ -152,8 +152,6 @@ function parseCallSummary(body) {
       summary.is_gst_registred,
       summary.is_gst_registered,
       summary.is_GST_registered,
-      customerData.is_gst_registered,
-      customerData.is_GST_registered,
     )),
     invoicingAndBilling: normalizeYesNo(summary.invoicing_and_billing),
     completeAccounting: normalizeYesNo(summary.complete_accounting),

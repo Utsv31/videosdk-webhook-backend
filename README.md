@@ -154,12 +154,18 @@ GST patch behavior:
 - Always appends the VideoSDK summary as internal notes.
 - Always adds `Voice AI attempt` for every summary webhook that patches or creates a lead.
 - Adds `Identity Confirmed` when `is_right_business` is `yes`.
-- Adds `GST Confirmed` when GST registration is confirmed.
+- Does not add a `GST Confirmed` tag for GST cohort leads.
 - Does not add requirement tags for `invoicing_and_billing` or `complete_accounting` for now; those fields remain visible in internal notes.
 - Adds `AI Demo Requested` when `demo_requested` is `yes`.
 - Adds `Sales Person callback` when `call_status` is `busy` and callback is needed.
-- Moves to `1.g AI Contact - Sales Person Callback` for busy + callback-needed calls.
-- Otherwise moves to `1.e AI Contact - Identity Confirmed` when identity or GST registration is confirmed.
+
+GST stage movement:
+
+- `Identity Confirmed` -> `1.e AI Contact - Identity Confirmed`
+- `Identity Confirmed + GST Confirmed` -> `1.f AI Contact - GST Confirmed`
+- `Sales Person Callback` -> `1.g AI Contact - Sales Person Callback`
+- `Identity Confirmed + Sales Person Callback` -> `1.g AI Contact - Sales Person Callback`
+- `Sales Person Callback + Identity Confirmed + GST Confirmed` -> `1.g AI Contact - Sales Person Callback`
 
 GST agent id and default GST caller number are configured through env:
 
@@ -185,7 +191,7 @@ Retry rules:
 - Standard retryable `call_status` values are `call_not_picked`, `voicemail`, and `failed`.
 - Busy calls use the busy engaged flow only when `is_right_business=yes` and `is_need_callback=no`.
 - `busy + is_need_callback=yes` does not retry; the lead gets the `Sales Person callback` tag and sales callback stage.
-- `busy/failed + GST registered` does not retry; the lead gets the `GST Confirmed` tag and normal confirmed stage.
+- `busy/failed + GST confirmed from summary` does not retry; the lead moves by the GST stage rules.
 - `busy/failed + is_right_business=yes` without explicit `is_need_callback=no` does not retry; the lead gets the `Identity Confirmed` tag and normal confirmed stage.
 - `failed + is_right_business=yes + is_need_callback=no` follows the standard retry flow.
 - No retry is scheduled for `successful`, `on_hold`, missing phone number, missing `refrensLeadId`, missing webhook URL, or demo requested.

@@ -37,7 +37,6 @@ function isNo(value) {
 function isGstConfirmed(parsed) {
   return (
     isYes(parsed.isGstRegistered) ||
-    isYes(parsed.isGstRegisteredInput) ||
     parsed.gstStatus === 'registered'
   );
 }
