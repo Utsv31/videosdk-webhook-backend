@@ -9,9 +9,9 @@ const GST_STANDARD_RETRY_DELAYS_MS = {
   2: 2 * 60 * 1000,
   3: 60 * 60 * 1000,
 };
-const GST_BUSY_ENGAGED_RETRY_DELAYS_MS = {
-  2: 30 * 60 * 1000,
-  3: 60 * 60 * 1000,
+const GST_CALLBACK_REQUESTED_RETRY_DELAYS_MS = {
+  2: 2 * 60 * 60 * 1000,
+  3: 2 * 60 * 60 * 1000,
 };
 
 const GST_RETRYABLE_CALL_STATUSES = new Set([
@@ -34,6 +34,47 @@ function isNo(value) {
   return value === 'no' || value === false;
 }
 
+function hasValue(value) {
+  if (value === undefined || value === null) {
+    return false;
+  }
+
+  if (typeof value !== 'string') {
+    return Boolean(value);
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return Boolean(normalized) && ![
+    'no',
+    'not disclosed',
+    'not applicable',
+    'not sure',
+    'none',
+  ].includes(normalized);
+}
+
+function hasMeaningfulGstSignal(parsed) {
+  return Boolean(
+    isYes(parsed.isRightBusiness) ||
+    isYes(parsed.isNeedCallback) ||
+    isYes(parsed.demoRequested) ||
+    isYes(parsed.invoicingAndBilling) ||
+    isYes(parsed.completeAccounting) ||
+    hasValue(parsed.currentInvoicingPlatform) ||
+    hasValue(parsed.requirementType) ||
+    hasValue(parsed.businessNature) ||
+    hasValue(parsed.businessDescription),
+  );
+}
+
+function isCallbackRequestedRetryPath(parsed) {
+  return (
+    ['busy', 'failed'].includes(parsed.gstCallStatus) &&
+    isYes(parsed.isNeedCallback) &&
+    isYes(parsed.isRightBusiness)
+  );
+}
+
 function getGstRoutingRuleId(parsed) {
   return process.env.GST_ROUTING_RULE_ID || parsed.routingRuleId || DEFAULT_GST_ROUTING_RULE_ID;
 }
@@ -47,17 +88,10 @@ function getWebhookUrl(parsed) {
 }
 
 function getRetryFlow(parsed) {
-  if (parsed.retryFlow === 'busy-engaged') {
+  if (parsed.retryFlow === 'callback-requested') {
     return {
-      name: 'busy-engaged',
-      delays: GST_BUSY_ENGAGED_RETRY_DELAYS_MS,
-    };
-  }
-
-  if (parsed.gstCallStatus === 'busy' && isYes(parsed.isRightBusiness) && isNo(parsed.isNeedCallback)) {
-    return {
-      name: 'busy-engaged',
-      delays: GST_BUSY_ENGAGED_RETRY_DELAYS_MS,
+      name: 'callback-requested',
+      delays: GST_CALLBACK_REQUESTED_RETRY_DELAYS_MS,
     };
   }
 
@@ -102,13 +136,6 @@ function getGstRetryDecision(parsed) {
     };
   }
 
-  if (isYes(parsed.isNeedCallback)) {
-    return {
-      shouldRetry: false,
-      reason: 'callback needed; route to sales and stop ai retries',
-    };
-  }
-
   if (isYes(parsed.demoRequested)) {
     return {
       shouldRetry: false,
@@ -116,25 +143,39 @@ function getGstRetryDecision(parsed) {
     };
   }
 
-  if (
-    parsed.gstCallStatus === 'busy' &&
-    isYes(parsed.isRightBusiness) &&
-    !isNo(parsed.isNeedCallback)
-  ) {
+  if (isCallbackRequestedRetryPath(parsed)) {
+    return buildRetryDecision(parsed, getRetryFlow({
+      ...parsed,
+      retryFlow: 'callback-requested',
+    }));
+  }
+
+  if (parsed.retryFlow === 'callback-requested') {
+    return buildRetryDecision(parsed, getRetryFlow(parsed));
+  }
+
+  if (parsed.gstCallStatus === 'busy' && hasMeaningfulGstSignal(parsed)) {
     return {
       shouldRetry: false,
-      reason: 'busy identity confirmed without explicit callback=no; route normal lead and stop ai retries',
+      reason: 'busy call has populated summary fields; stop ai retries',
     };
   }
 
-  if (
-    parsed.gstCallStatus === 'failed' &&
-    isYes(parsed.isRightBusiness) &&
-    !isNo(parsed.isNeedCallback)
-  ) {
+  if (parsed.gstCallStatus === 'failed' && hasMeaningfulGstSignal(parsed)) {
     return {
       shouldRetry: false,
-      reason: 'failed identity confirmed without explicit callback=no; route normal lead and stop ai retries',
+      reason: 'failed call has populated summary fields; stop ai retries',
+    };
+  }
+
+  return buildRetryDecision(parsed, getRetryFlow(parsed));
+}
+
+function buildRetryDecision(parsed, retryFlow) {
+  if (parsed.agentType !== 'gst') {
+    return {
+      shouldRetry: false,
+      reason: 'not gst agent',
     };
   }
 
@@ -161,7 +202,6 @@ function getGstRetryDecision(parsed) {
 
   const currentAttempt = asPositiveInteger(parsed.retryAttempt, 1);
   const nextAttempt = currentAttempt + 1;
-  const retryFlow = getRetryFlow(parsed);
 
   if (currentAttempt >= MAX_GST_TOTAL_ATTEMPTS || nextAttempt > MAX_GST_TOTAL_ATTEMPTS) {
     return {

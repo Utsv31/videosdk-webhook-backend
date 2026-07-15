@@ -56,6 +56,7 @@ REFRENS_DEFAULT_STAGE=Contacted
 GST_AGENT_ID=ag_n8irvh
 GST_SIP_CALL_FROM=+918035017510
 GST_ROUTING_RULE_ID=rr_fogwqz
+ADHOC_AGENT_ID=ag_l901ju
 VIDEOSDK_AUTH_TOKEN=
 VIDEOSDK_API_BASE_URL=https://api.videosdk.live
 VIDEOSDK_WEBHOOK_URL=https://videosdk-webhook-backend.onrender.com/webhook
@@ -138,6 +139,16 @@ externalId = videosdk-{callId}
 
 That makes webhook retries idempotent at the Refrens lead-create API level.
 
+## Agent Orchestration
+
+Summary webhook parsing is routed through `src/agents`.
+
+- GST agent: detected by `GST_AGENT_ID`.
+- Ad hoc agent: detected by `ADHOC_AGENT_ID`.
+- Ad hoc campaign parser currently supports `Lost_Rejected_Recovery`.
+
+To add another dynamic campaign, add a parser in `src/agents/adhoc.js` and route by `metadata.campaign` / `summary.campaign`. To add another agent, add a new module under `src/agents` and register it in `src/agents/index.js`.
+
 ## GST Agent Flow
 
 GST summary webhooks are detected when `room-data.agentId` matches `GST_AGENT_ID`, or when the summary contains GST-specific fields such as `call_status`, `current_invoicing_platform`, `requirement_type`, or `lead_priority`.
@@ -185,14 +196,15 @@ Retry rules:
 
 - Total attempts: 3, including the original dashboard call.
 - Standard retry flow: attempt 2 after 2 minutes, attempt 3 after 1 hour.
-- Busy engaged retry flow: attempt 2 after 30 minutes, attempt 3 after 1 hour.
+- Callback-requested retry flow: attempt 2 after 2 hours, attempt 3 after 2 hours.
 - Calls are only dispatched between 9 AM and 9 PM IST.
 - If a retry falls outside the call window, it remains queued and is scheduled for the next 9 AM IST call window.
-- Standard retryable `call_status` values are `call_not_picked`, `voicemail`, and `failed`.
-- Busy calls use the busy engaged flow only when `is_right_business=yes` and `is_need_callback=no`.
-- `busy + is_need_callback=yes` does not retry; the lead gets the `Sales Person callback` tag and sales callback stage.
-- `busy/failed + is_right_business=yes` without explicit `is_need_callback=no` does not retry; the lead gets the `Identity Confirmed` tag and normal confirmed stage.
-- `failed + is_right_business=yes + is_need_callback=no` follows the standard retry flow.
+- Standard retryable `call_status` values are `call_not_picked`, `voicemail`, and empty `failed`.
+- `busy/failed + is_right_business=yes + is_need_callback=yes` uses the callback-requested flow.
+- If a callback-requested retry is not picked, the next retry stays in callback-requested flow.
+- `failed` with no meaningful summary fields follows the standard retry flow.
+- `failed` with meaningful populated fields stops AI retries and tags/stages from the populated fields.
+- `busy` with meaningful populated fields stops AI retries unless it qualifies for callback-requested flow.
 - No retry is scheduled for `successful`, `on_hold`, missing phone number, missing `refrensLeadId`, missing webhook URL, or demo requested.
 
 Retry jobs are stored in MongoDB:
