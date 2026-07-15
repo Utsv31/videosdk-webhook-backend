@@ -19,12 +19,16 @@ function normalizeRefrensLeadId(value) {
 function getRefrensLeadId(customerData, roomData, body) {
   return normalizeRefrensLeadId(
     customerData.refrensLeadId ||
+    customerData.refrensleadid ||
     customerData.crm_lead_id ||
     customerData.leadId ||
     customerData.metaData?.refrensLeadId ||
+    customerData.metaData?.refrensleadid ||
     customerData.metaData?.crm_lead_id ||
     roomData.refrensLeadId ||
+    roomData.refrensleadid ||
     body?.data?.metaData?.refrensLeadId ||
+    body?.data?.metaData?.refrensleadid ||
     body?.data?.metaData?.crm_lead_id,
   );
 }

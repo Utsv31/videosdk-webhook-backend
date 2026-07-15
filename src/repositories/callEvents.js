@@ -208,6 +208,20 @@ async function markLeadFailed(eventId, { externalId, leadId, requestPayload, err
   });
 }
 
+async function markEventFailed(eventId, error) {
+  return updateEvent(eventId, {
+    $set: {
+      'processing.status': 'failed',
+      'processing.lastError': error?.message || 'Unknown webhook processing error',
+      'processing.errorName': error?.name || null,
+      'processing.errorStack': error?.stack || null,
+      'processing.processedAt': new Date(),
+      'processing.errorResponseStatus': error?.response?.status || null,
+      'processing.errorResponsePayload': error?.response?.data || null,
+    },
+  });
+}
+
 async function markRetryDecision(eventId, decision) {
   return updateEvent(eventId, {
     $set: {
@@ -237,6 +251,7 @@ module.exports = {
   markEventIgnored,
   markEventProcessing,
   markEventParsed,
+  markEventFailed,
   markLeadCreated,
   markLeadPatched,
   markLeadSkipped,

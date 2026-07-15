@@ -6,6 +6,7 @@ const {
   saveIncomingWebhook,
   markEventIgnored,
   markEventProcessing,
+  markEventFailed,
 } = require('../repositories/callEvents');
 const validateWebhook = require('../utils/validateWebhook');
 const logger = require('../utils/logger');
@@ -31,10 +32,11 @@ router.post('/', (req, res) => {
 
   setImmediate(async () => {
     let eventRecord = null;
+    let eventId = null;
 
     try {
       eventRecord = await saveIncomingWebhook(body);
-      const eventId = eventRecord?._id?.toString();
+      eventId = eventRecord?._id?.toString();
       const validation = validateWebhook(req);
 
       if (!validation.valid) {
@@ -72,6 +74,7 @@ router.post('/', (req, res) => {
         message: error.message,
         stack: error.stack,
       });
+      await markEventFailed(eventId, error);
     }
   });
 });
