@@ -84,6 +84,20 @@ function isYes(value) {
   return value === 'yes' || value === true;
 }
 
+function isAdhocPositiveSignal(parsed) {
+  const positiveOutcomes = new Set([
+    'Interested',
+    'Callback Requested',
+    'Need Time',
+  ]);
+
+  return (
+    positiveOutcomes.has(parsed.callOutcome) ||
+    parsed.offerInterest === 'Interested' ||
+    parsed.salesCallbackRequired === true
+  );
+}
+
 function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -123,12 +137,12 @@ function buildGstTags(parsed) {
     GST_PATCH_CONFIG.tags.voiceAiAttempt,
     isYes(parsed.isRightBusiness) && GST_PATCH_CONFIG.tags.identityConfirmed,
     isYes(parsed.demoRequested) && GST_PATCH_CONFIG.tags.aiDemoRequested,
-    parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback) && GST_PATCH_CONFIG.tags.salesCallback,
+    isYes(parsed.isNeedCallback) && GST_PATCH_CONFIG.tags.salesCallback,
   ]);
 }
 
 function getGstStage(parsed) {
-  if (parsed.gstCallStatus === 'busy' && isYes(parsed.isNeedCallback)) {
+  if (isYes(parsed.isNeedCallback)) {
     return GST_PATCH_CONFIG.stages.salesCallback;
   }
 
@@ -197,16 +211,21 @@ function buildPatchLeadPayload(parsed) {
   const pipeline = process.env.REFRENS_DEFAULT_PIPELINE || 'Sales Pipeline';
   const stage = process.env.REFRENS_DEFAULT_STAGE || 'Contacted';
   const noteEntries = buildInternalNoteEntries(parsed);
-
-  return {
-    pipeline,
-    stage,
+  const shouldMoveStage = isAdhocPositiveSignal(parsed);
+  const payload = {
     tagsAdd: [GST_PATCH_CONFIG.tags.voiceAiAttempt],
     addInternalNotes: {
       body: noteEntries.length ? noteEntries : ['VideoSDK call summary received.'],
       clientRequestId: buildClientRequestId(parsed),
     },
   };
+
+  if (shouldMoveStage) {
+    payload.pipeline = pipeline;
+    payload.stage = stage;
+  }
+
+  return payload;
 }
 
 async function createLeadInCrm(parsed) {

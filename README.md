@@ -157,7 +157,7 @@ GST patch behavior:
 - Does not check GST registration status from webhook fields.
 - Does not add requirement tags for `invoicing_and_billing` or `complete_accounting` for now; those fields remain visible in internal notes.
 - Adds `AI Demo Requested` when `demo_requested` is `yes`.
-- Adds `Sales Person callback` when `call_status` is `busy` and callback is needed.
+- Adds `Sales Person callback` when `is_need_callback` is `yes`.
 
 GST stage movement:
 
@@ -165,6 +165,7 @@ GST stage movement:
 - `Sales Person Callback` -> `1.g AI Contact - Sales Person Callback`
 - `Identity Confirmed + Sales Person Callback` -> `1.g AI Contact - Sales Person Callback`
 - `Sales Person Callback + Identity Confirmed` -> `1.g AI Contact - Sales Person Callback`
+- No identity/callback signal -> no pipeline or stage field is sent, so the lead stays in its existing LMS stage.
 
 GST agent id and default GST caller number are configured through env:
 
@@ -190,7 +191,6 @@ Retry rules:
 - Standard retryable `call_status` values are `call_not_picked`, `voicemail`, and `failed`.
 - Busy calls use the busy engaged flow only when `is_right_business=yes` and `is_need_callback=no`.
 - `busy + is_need_callback=yes` does not retry; the lead gets the `Sales Person callback` tag and sales callback stage.
-- `busy/failed + GST confirmed from summary` does not retry; the lead moves by the GST stage rules.
 - `busy/failed + is_right_business=yes` without explicit `is_need_callback=no` does not retry; the lead gets the `Identity Confirmed` tag and normal confirmed stage.
 - `failed + is_right_business=yes + is_need_callback=no` follows the standard retry flow.
 - No retry is scheduled for `successful`, `on_hold`, missing phone number, missing `refrensLeadId`, missing webhook URL, or demo requested.
@@ -213,7 +213,7 @@ scheduledAtIst
 businessHoursAdjusted
 ```
 
-Retry jobs are deduped per lead and retry attempt. If a later webhook shows the lead should stop AI calling, such as callback needed, GST confirmed, demo requested, or max attempts reached, pending scheduled retry jobs for that `refrensLeadId` are marked:
+Retry jobs are deduped per lead and retry attempt. If a later webhook shows the lead should stop AI calling, such as callback needed, demo requested, or max attempts reached, pending scheduled retry jobs for that `refrensLeadId` are marked:
 
 ```text
 status: cancelled
@@ -286,14 +286,9 @@ If found, it patches:
 PATCH {REFRENS_API_BASE_URL}/api/v1/businesses/{REFRENS_BUSINESS_SLUG}/leads/{leadId}
 ```
 
-For now, PATCH moves the lead to:
+PATCH appends VideoSDK summary details as internal notes using `addInternalNotes` with a stable `clientRequestId`.
 
-```text
-Pipeline: Sales Pipeline
-Stage: Contacted
-```
-
-and appends VideoSDK summary details as internal notes using `addInternalNotes` with a stable `clientRequestId`.
+Ad hoc PATCH moves the lead to `REFRENS_DEFAULT_STAGE` only when the summary has a positive ad hoc signal such as `Interested`, `Callback Requested`, `Need Time`, `offer_interest=Interested`, or `sales_callback_required=true`. Without a positive signal, no pipeline or stage field is sent, so the lead stays in its existing LMS stage.
 
 PATCH does not update `details`; call summaries are kept as internal notes on existing leads. New lead creation still writes summary content into `details` because create does not support internal notes.
 
