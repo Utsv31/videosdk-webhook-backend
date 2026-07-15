@@ -22,6 +22,33 @@ function getWebhookType(body) {
   return payload?.webhookType || (payload?.['call-summary'] ? 'call-summary' : 'unknown');
 }
 
+function getPayloadRoomId(body) {
+  const payload = unwrapWebhookBody(body) || {};
+  return payload?.data?.roomId || payload?.['room-data']?.['meeting-id'] || null;
+}
+
+function getPayloadAgentId(body) {
+  const payload = unwrapWebhookBody(body) || {};
+  return payload?.data?.agentId || payload?.['room-data']?.agentId || null;
+}
+
+function getPayloadRefrensLeadId(body) {
+  const payload = unwrapWebhookBody(body) || {};
+  const customerData = payload?.['customer-data'] || {};
+  const metadata = payload?.data?.metaData || {};
+
+  return (
+    customerData.refrensLeadId ||
+    customerData.refrensleadid ||
+    customerData.crm_lead_id ||
+    customerData.leadId ||
+    metadata.refrensLeadId ||
+    metadata.refrensleadid ||
+    metadata.crm_lead_id ||
+    null
+  );
+}
+
 function buildDedupeKey({ callId, webhookType, body }) {
   if (callId) {
     return `${webhookType}:${callId}`;
@@ -40,6 +67,9 @@ async function saveIncomingWebhook(body) {
   const collection = await getCallEventsCollection();
   const callId = getPayloadCallId(body);
   const webhookType = getWebhookType(body);
+  const roomId = getPayloadRoomId(body);
+  const agentId = getPayloadAgentId(body);
+  const refrensLeadId = getPayloadRefrensLeadId(body);
   const dedupeKey = buildDedupeKey({ callId, webhookType, body });
   const now = new Date();
 
@@ -49,6 +79,9 @@ async function saveIncomingWebhook(body) {
       $setOnInsert: {
         dedupeKey,
         callId,
+        roomId,
+        agentId,
+        refrensLeadId,
         webhookType,
         source: 'videosdk',
         createdAt: now,
@@ -70,6 +103,11 @@ async function saveIncomingWebhook(body) {
         },
       },
       $set: {
+        callId,
+        roomId,
+        agentId,
+        refrensLeadId,
+        webhookType,
         rawPayload: body,
         receivedAt: now,
         updatedAt: now,
@@ -245,6 +283,9 @@ async function markRetryDecision(eventId, decision) {
 
 module.exports = {
   getPayloadCallId,
+  getPayloadRoomId,
+  getPayloadAgentId,
+  getPayloadRefrensLeadId,
   getWebhookType,
   unwrapWebhookBody,
   saveIncomingWebhook,

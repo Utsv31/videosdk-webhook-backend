@@ -48,6 +48,8 @@ async function getCallEventsCollection() {
   if (!indexesReady) {
     await collection.createIndex({ dedupeKey: 1 }, { unique: true });
     await collection.createIndex({ callId: 1, webhookType: 1 });
+    await collection.createIndex({ roomId: 1, webhookType: 1 });
+    await collection.createIndex({ refrensLeadId: 1, receivedAt: -1 });
     await collection.createIndex({ 'processing.status': 1, receivedAt: 1 });
     indexesReady = true;
   }
