@@ -34,6 +34,10 @@ function isNo(value) {
   return value === 'no' || value === false;
 }
 
+function isExplicitNo(value) {
+  return isNo(value);
+}
+
 function hasValue(value) {
   if (value === undefined || value === null) {
     return false;
@@ -71,7 +75,7 @@ function isCallbackRequestedRetryPath(parsed) {
   return (
     ['busy', 'failed'].includes(parsed.gstCallStatus) &&
     isYes(parsed.isNeedCallback) &&
-    isYes(parsed.isRightBusiness)
+    !isExplicitNo(parsed.isRightBusiness)
   );
 }
 

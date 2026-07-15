@@ -84,6 +84,14 @@ function isYes(value) {
   return value === 'yes' || value === true;
 }
 
+function isNo(value) {
+  return value === 'no' || value === false;
+}
+
+function canRouteSalesCallback(parsed) {
+  return isYes(parsed.isNeedCallback) && !isNo(parsed.isRightBusiness);
+}
+
 function isAdhocPositiveSignal(parsed) {
   const positiveOutcomes = new Set([
     'Interested',
@@ -137,12 +145,12 @@ function buildGstTags(parsed) {
     GST_PATCH_CONFIG.tags.voiceAiAttempt,
     isYes(parsed.isRightBusiness) && GST_PATCH_CONFIG.tags.identityConfirmed,
     isYes(parsed.demoRequested) && GST_PATCH_CONFIG.tags.aiDemoRequested,
-    isYes(parsed.isNeedCallback) && GST_PATCH_CONFIG.tags.salesCallback,
+    canRouteSalesCallback(parsed) && GST_PATCH_CONFIG.tags.salesCallback,
   ]);
 }
 
 function getGstStage(parsed) {
-  if (isYes(parsed.isNeedCallback)) {
+  if (canRouteSalesCallback(parsed)) {
     return GST_PATCH_CONFIG.stages.salesCallback;
   }
 
