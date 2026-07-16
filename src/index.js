@@ -2,7 +2,9 @@ require('dotenv').config();
 
 const express = require('express');
 const webhookRouter = require('./routes/webhook');
+const jobsRouter = require('./routes/jobs');
 const { startRetryWorker } = require('./workers/retryWorker');
+const { startOutboundCallWorker } = require('./workers/outboundCallWorker');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -23,6 +25,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/webhook', webhookRouter);
+app.use('/jobs', jobsRouter);
 
 app.use((req, res) => {
   res.status(404).json({
@@ -54,4 +57,5 @@ app.listen(port, () => {
   });
 
   startRetryWorker();
+  startOutboundCallWorker();
 });

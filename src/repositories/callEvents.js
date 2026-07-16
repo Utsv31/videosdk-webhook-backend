@@ -49,6 +49,14 @@ function getPayloadRefrensLeadId(body) {
   );
 }
 
+function getPayloadOutboundJobId(body) {
+  const payload = unwrapWebhookBody(body) || {};
+  const customerData = payload?.['customer-data'] || {};
+  const metadata = payload?.data?.metaData || {};
+
+  return customerData.outboundJobId || metadata.outboundJobId || null;
+}
+
 function buildDedupeKey({ callId, webhookType, body }) {
   if (callId) {
     return `${webhookType}:${callId}`;
@@ -70,6 +78,7 @@ async function saveIncomingWebhook(body) {
   const roomId = getPayloadRoomId(body);
   const agentId = getPayloadAgentId(body);
   const refrensLeadId = getPayloadRefrensLeadId(body);
+  const outboundJobId = getPayloadOutboundJobId(body);
   const dedupeKey = buildDedupeKey({ callId, webhookType, body });
   const now = new Date();
 
@@ -82,6 +91,7 @@ async function saveIncomingWebhook(body) {
         roomId,
         agentId,
         refrensLeadId,
+        outboundJobId,
         webhookType,
         source: 'videosdk',
         createdAt: now,
@@ -107,6 +117,7 @@ async function saveIncomingWebhook(body) {
         roomId,
         agentId,
         refrensLeadId,
+        outboundJobId,
         webhookType,
         rawPayload: body,
         receivedAt: now,
@@ -286,6 +297,7 @@ module.exports = {
   getPayloadRoomId,
   getPayloadAgentId,
   getPayloadRefrensLeadId,
+  getPayloadOutboundJobId,
   getWebhookType,
   unwrapWebhookBody,
   saveIncomingWebhook,

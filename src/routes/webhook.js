@@ -2,12 +2,15 @@ const express = require('express');
 const { processCallSummary, isCallSummaryPayload } = require('../handlers/callSummary');
 const {
   getPayloadCallId,
+  getPayloadOutboundJobId,
+  getPayloadRoomId,
   getWebhookType,
   saveIncomingWebhook,
   markEventIgnored,
   markEventProcessing,
   markEventFailed,
 } = require('../repositories/callEvents');
+const { markOutboundJobWebhookReceived } = require('../repositories/outboundCallJobs');
 const validateWebhook = require('../utils/validateWebhook');
 const logger = require('../utils/logger');
 
@@ -16,6 +19,8 @@ const router = express.Router();
 router.post('/', (req, res) => {
   const body = req.body || {};
   const callId = getPayloadCallId(body);
+  const roomId = getPayloadRoomId(body);
+  const outboundJobId = getPayloadOutboundJobId(body);
   const webhookType = getWebhookType(body);
 
   logger.info('Incoming VideoSDK webhook', {
@@ -37,6 +42,14 @@ router.post('/', (req, res) => {
     try {
       eventRecord = await saveIncomingWebhook(body);
       eventId = eventRecord?._id?.toString();
+      await markOutboundJobWebhookReceived({
+        outboundJobId,
+        callId,
+        roomId,
+        webhookType,
+        eventId,
+      });
+
       const validation = validateWebhook(req);
 
       if (!validation.valid) {

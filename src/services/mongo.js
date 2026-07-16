@@ -5,6 +5,8 @@ let client;
 let db;
 let indexesReady = false;
 let retryIndexesReady = false;
+let metabaseRunIndexesReady = false;
+let outboundJobIndexesReady = false;
 
 function isMongoConfigured() {
   return Boolean(process.env.MONGODB_URI);
@@ -50,6 +52,7 @@ async function getCallEventsCollection() {
     await collection.createIndex({ callId: 1, webhookType: 1 });
     await collection.createIndex({ roomId: 1, webhookType: 1 });
     await collection.createIndex({ refrensLeadId: 1, receivedAt: -1 });
+    await collection.createIndex({ outboundJobId: 1, webhookType: 1 });
     await collection.createIndex({ 'processing.status': 1, receivedAt: 1 });
     indexesReady = true;
   }
@@ -77,6 +80,48 @@ async function getRetryJobsCollection() {
   return collection;
 }
 
+async function getMetabaseRunsCollection() {
+  const database = await getDb();
+
+  if (!database) {
+    return null;
+  }
+
+  const collectionName = process.env.MONGODB_METABASE_RUNS_COLLECTION || 'metabase_runs';
+  const collection = database.collection(collectionName);
+
+  if (!metabaseRunIndexesReady) {
+    await collection.createIndex({ sourceKey: 1, startedAt: -1 });
+    await collection.createIndex({ status: 1, startedAt: -1 });
+    metabaseRunIndexesReady = true;
+  }
+
+  return collection;
+}
+
+async function getOutboundCallJobsCollection() {
+  const database = await getDb();
+
+  if (!database) {
+    return null;
+  }
+
+  const collectionName = process.env.MONGODB_OUTBOUND_CALL_JOBS_COLLECTION || 'outbound_call_jobs';
+  const collection = database.collection(collectionName);
+
+  if (!outboundJobIndexesReady) {
+    await collection.createIndex({ dedupeKey: 1 }, { unique: true });
+    await collection.createIndex({ status: 1, scheduledAt: 1 });
+    await collection.createIndex({ refrensLeadId: 1, createdAt: -1 });
+    await collection.createIndex({ outboundJobId: 1 });
+    await collection.createIndex({ callId: 1 });
+    await collection.createIndex({ roomId: 1 });
+    outboundJobIndexesReady = true;
+  }
+
+  return collection;
+}
+
 async function closeMongo() {
   if (client) {
     await client.close();
@@ -84,6 +129,8 @@ async function closeMongo() {
     db = null;
     indexesReady = false;
     retryIndexesReady = false;
+    metabaseRunIndexesReady = false;
+    outboundJobIndexesReady = false;
   }
 }
 
@@ -92,5 +139,7 @@ module.exports = {
   getDb,
   getCallEventsCollection,
   getRetryJobsCollection,
+  getMetabaseRunsCollection,
+  getOutboundCallJobsCollection,
   closeMongo,
 };

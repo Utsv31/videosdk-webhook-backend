@@ -62,18 +62,29 @@ VIDEOSDK_API_BASE_URL=https://api.videosdk.live
 VIDEOSDK_WEBHOOK_URL=https://videosdk-webhook-backend.onrender.com/webhook
 RETRY_WORKER_ENABLED=true
 RETRY_WORKER_INTERVAL_MS=60000
+OUTBOUND_CALL_WORKER_ENABLED=true
+OUTBOUND_CALL_WORKER_INTERVAL_MS=2000
+OUTBOUND_CALL_WEBHOOK_TIMEOUT_MS=360000
+OUTBOUND_CALL_MAX_DISPATCH_ATTEMPTS=2
 CALL_WINDOW_START_HOUR_IST=9
 CALL_WINDOW_END_HOUR_IST=21
+METABASE_URL=https://metabase-proded4fa3ab.azurewebsites.net
+METABASE_API_KEY=
+METABASE_GST_UNASSIGNED_QUESTION_ID=4645
+JOBS_API_TOKEN=
 MONGODB_URI=mongodb+srv://<db_username>:<db_password>@cluster0.qdrculk.mongodb.net/videosdk_crm?retryWrites=true&w=majority&appName=Cluster0
 MONGODB_DB_NAME=videosdk_crm
 MONGODB_EVENTS_COLLECTION=call_events
 MONGODB_RETRY_JOBS_COLLECTION=call_retry_jobs
+MONGODB_METABASE_RUNS_COLLECTION=metabase_runs
+MONGODB_OUTBOUND_CALL_JOBS_COLLECTION=outbound_call_jobs
 ```
 
 Optional:
 
 ```env
 VIDEOSDK_WEBHOOK_SECRET=
+METABASE_SESSION_TOKEN=
 ```
 
 If `VIDEOSDK_WEBHOOK_SECRET` is set, the server expects an `x-videosdk-signature` HMAC SHA-256 signature. If VideoSDK uses a different signature scheme, update `src/utils/validateWebhook.js`.
@@ -187,6 +198,88 @@ GST_ROUTING_RULE_ID=rr_fogwqz
 ```
 
 Tag names and stage names are kept in code constants so the CRM behavior stays versioned with the backend.
+
+## GST Metabase First-Call Intake
+
+GST first-call batches can be started from a saved Metabase question instead of uploading CSVs to the VideoSDK dashboard.
+
+Current source:
+
+```text
+https://metabase-proded4fa3ab.azurewebsites.net/question/4645-leads-5-docs-gst-unassigned
+```
+
+The backend calls:
+
+```text
+POST {METABASE_URL}/api/card/{METABASE_GST_UNASSIGNED_QUESTION_ID}/query/json
+```
+
+Start a run:
+
+```bash
+curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/gst-unassigned/run \
+  -H "Content-Type: application/json" \
+  -H "x-jobs-api-token: <JOBS_API_TOKEN>" \
+  -d "{}"
+```
+
+Optional test limit:
+
+```bash
+curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/gst-unassigned/run \
+  -H "Content-Type: application/json" \
+  -H "x-jobs-api-token: <JOBS_API_TOKEN>" \
+  -d "{\"limit\": 3}"
+```
+
+Rows are normalized into:
+
+```text
+leadId, clientName, companyName, phone, email, status, stage, tags
+```
+
+Before the first call is queued, the backend checks tags from the Metabase row.
+
+Blocking tags:
+
+```text
+ONQWVW1-utEzlg7E4tT3F  Sales Person Callback
+lhZNBczeoRecfbNQvTcHa  GST Confirmed
+sM1iZbCixqm7Ldibszs2f  Identity Confirmed
+```
+
+`a4Anq_x2Vmere1G-AqRXB` / `Voice AI attempt` is not a blocking tag by itself.
+
+Eligible leads are stored in `outbound_call_jobs` and dispatched by the outbound call worker:
+
+- one job is dispatched per worker tick
+- default tick is 2 seconds, so the backend does not trigger two first calls in the same second
+- calls are still guarded by the 9 AM to 9 PM IST call window
+- the VideoSDK metadata includes `outboundJobId`, `refrensLeadId`, `sourceKey`, and `metabaseQuestionId`
+- if no webhook is received within 6 minutes, the job is requeued once by default
+
+Run history is stored in:
+
+```text
+metabase_runs
+```
+
+First-call dispatch jobs are stored in:
+
+```text
+outbound_call_jobs
+```
+
+Useful Mongo filters:
+
+```js
+{ sourceKey: "gst_unassigned_leads" }
+{ refrensLeadId: "lead_id_here" }
+{ status: "skipped" }
+{ status: "webhook_timeout" }
+{ outboundJobId: "job_id_here" }
+```
 
 ## GST Retry Flow
 
@@ -354,6 +447,9 @@ The backend creates these indexes automatically:
 ```text
 dedupeKey unique index
 callId + webhookType index
+roomId + webhookType index
+refrensLeadId + receivedAt index
+outboundJobId + webhookType index
 processing.status + receivedAt index
 ```
 
