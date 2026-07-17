@@ -110,6 +110,55 @@ function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+function getTagId(tag) {
+  if (!tag) {
+    return null;
+  }
+
+  if (typeof tag === 'string') {
+    return tag;
+  }
+
+  return (
+    tag.id ||
+    tag._id ||
+    tag.key ||
+    tag.value ||
+    tag.tagId ||
+    tag.name ||
+    tag.label ||
+    null
+  );
+}
+
+function collectTagIds(value) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectTagIds(entry));
+  }
+
+  const tagId = getTagId(value);
+  return tagId ? [tagId] : [];
+}
+
+function extractLeadTagIds(leadResponse) {
+  const lead =
+    leadResponse?.data?.data ||
+    leadResponse?.data?.lead ||
+    leadResponse?.data ||
+    leadResponse;
+
+  return uniqueValues([
+    ...collectTagIds(lead?.tags),
+    ...collectTagIds(lead?.privateFields?.vendor?.tags),
+    ...collectTagIds(lead?.privateFields?.tags),
+    ...collectTagIds(lead?.vendor?.tags),
+  ]);
+}
+
 function buildInternalNoteEntries(parsed) {
   const genericNotes = [
     parsed.callSummaryText && `VideoSDK call summary: ${parsed.callSummaryText}`,
@@ -376,6 +425,7 @@ module.exports = {
   buildCreateLeadPayload,
   buildPatchLeadPayload,
   buildGstPatchLeadPayload,
+  extractLeadTagIds,
   GST_PATCH_CONFIG,
   createLeadInCrm,
   getLeadInCrm,

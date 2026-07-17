@@ -26,6 +26,10 @@ const GST_FIRST_CALL_BLOCKING_TAGS = new Set([
   GST_TAG_IDS.salesPersonCallback,
   GST_TAG_IDS.gstConfirmed,
   GST_TAG_IDS.identityConfirmed,
+  'Sales Person Callback',
+  'Sales Person callback',
+  'GST Confirmed',
+  'Identity Confirmed',
 ]);
 
 function getQuestionId() {
@@ -59,6 +63,8 @@ function getTagId(tag) {
     tag.key ||
     tag.value ||
     tag.tagId ||
+    tag.name ||
+    tag.label ||
     null
   );
 }
@@ -105,6 +111,22 @@ async function classifyLeadForGstCall({ sourceKey, lead }) {
     };
   }
 
+  const activeJob = await findActiveJobForLead({
+    sourceKey,
+    refrensLeadId: lead.leadId,
+  });
+
+  if (activeJob) {
+    return {
+      eligible: false,
+      reason: 'active outbound call job already exists for lead',
+      matchedSkipTags: [],
+      activeJobId: activeJob._id?.toString(),
+      activeJobStatus: activeJob.status || null,
+      shouldCreateSkippedJob: false,
+    };
+  }
+
   if (!lead.phone) {
     return {
       eligible: false,
@@ -120,20 +142,6 @@ async function classifyLeadForGstCall({ sourceKey, lead }) {
       eligible: false,
       reason: 'lead already has GST blocking tag',
       matchedSkipTags,
-    };
-  }
-
-  const activeJob = await findActiveJobForLead({
-    sourceKey,
-    refrensLeadId: lead.leadId,
-  });
-
-  if (activeJob) {
-    return {
-      eligible: false,
-      reason: 'active outbound call job already exists for lead',
-      matchedSkipTags: [],
-      activeJobId: activeJob._id?.toString(),
     };
   }
 
@@ -174,15 +182,17 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
 
       if (!classification.eligible) {
         stats.skippedCount += 1;
-        const skippedJob = await createSkippedOutboundCallJob({
-          runId,
-          sourceKey: GST_UNASSIGNED_SOURCE_KEY,
-          questionId,
-          lead,
-          rawRow: row,
-          skipReason: classification.reason,
-          matchedSkipTags: classification.matchedSkipTags,
-        });
+        const skippedJob = classification.shouldCreateSkippedJob === false
+          ? null
+          : await createSkippedOutboundCallJob({
+            runId,
+            sourceKey: GST_UNASSIGNED_SOURCE_KEY,
+            questionId,
+            lead,
+            rawRow: row,
+            skipReason: classification.reason,
+            matchedSkipTags: classification.matchedSkipTags,
+          });
 
         jobs.push({
           leadId: lead.leadId,
@@ -191,6 +201,7 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
           matchedSkipTags: classification.matchedSkipTags,
           jobId: skippedJob?._id?.toString() || null,
           activeJobId: classification.activeJobId || null,
+          activeJobStatus: classification.activeJobStatus || null,
         });
         continue;
       }

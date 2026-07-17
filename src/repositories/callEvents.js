@@ -87,12 +87,6 @@ async function saveIncomingWebhook(body) {
     {
       $setOnInsert: {
         dedupeKey,
-        callId,
-        roomId,
-        agentId,
-        refrensLeadId,
-        outboundJobId,
-        webhookType,
         source: 'videosdk',
         createdAt: now,
         processing: {

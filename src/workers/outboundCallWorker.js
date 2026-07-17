@@ -3,9 +3,12 @@ const {
   findWebhookTimedOutJobs,
   markOutboundJobDispatched,
   markOutboundJobDispatchFailed,
+  markOutboundJobPreDispatchCheckFailed,
+  markOutboundJobSkippedBeforeDispatch,
   markOutboundJobWebhookTimeout,
   requeueOutboundJobAfterWebhookTimeout,
 } = require('../repositories/outboundCallJobs');
+const { extractLeadTagIds, getLeadInCrm, isLeadNotFoundError } = require('../handlers/crm');
 const { dispatchSipCall } = require('../services/videosdk');
 const { applyCallWindow, isWithinCallWindow } = require('../utils/businessHours');
 const logger = require('../utils/logger');
@@ -14,6 +17,15 @@ const DEFAULT_OUTBOUND_WORKER_INTERVAL_MS = 2000;
 const DEFAULT_WEBHOOK_TIMEOUT_MS = 6 * 60 * 1000;
 const DEFAULT_GST_SIP_CALL_FROM = '+918035017510';
 const DEFAULT_GST_ROUTING_RULE_ID = 'rr_fogwqz';
+const GST_FIRST_CALL_BLOCKING_TAGS = new Set([
+  'ONQWVW1-utEzlg7E4tT3F',
+  'lhZNBczeoRecfbNQvTcHa',
+  'sM1iZbCixqm7Ldibszs2f',
+  'Sales Person Callback',
+  'Sales Person callback',
+  'GST Confirmed',
+  'Identity Confirmed',
+]);
 
 let outboundWorkerTimer = null;
 let outboundWorkerRunning = false;
@@ -39,6 +51,18 @@ function buildOutboundDispatchPayload(job) {
       previous_stage: job.stage || '',
       webhook_url: process.env.VIDEOSDK_WEBHOOK_URL,
     },
+  };
+}
+
+async function getLiveBlockingTags(job) {
+  const crmLead = await getLeadInCrm(job.refrensLeadId);
+  const tagIds = extractLeadTagIds(crmLead);
+  const matchedSkipTags = tagIds.filter((tagId) => GST_FIRST_CALL_BLOCKING_TAGS.has(tagId));
+
+  return {
+    crmLead,
+    tagIds,
+    matchedSkipTags,
   };
 }
 
@@ -105,6 +129,54 @@ async function processOutboundCallJobs() {
     }
 
     try {
+      let liveTagCheck;
+
+      try {
+        liveTagCheck = await getLiveBlockingTags(job);
+      } catch (error) {
+        if (isLeadNotFoundError(error)) {
+          await markOutboundJobSkippedBeforeDispatch(job._id.toString(), {
+            reason: 'Refrens lead not found before outbound dispatch',
+            matchedSkipTags: [],
+            crmLead: {
+              leadId: job.refrensLeadId,
+              status: error.response?.status || null,
+              response: error.response?.data || null,
+            },
+          });
+          return;
+        }
+
+        await markOutboundJobPreDispatchCheckFailed(job._id.toString(), error);
+
+        logger.error('Outbound GST call skipped because live Refrens pre-dispatch check failed', {
+          jobId: job._id.toString(),
+          refrensLeadId: job.refrensLeadId,
+          status: error.response?.status,
+          response: error.response?.data,
+          message: error.message,
+        });
+        return;
+      }
+
+      if (liveTagCheck.matchedSkipTags.length > 0) {
+        await markOutboundJobSkippedBeforeDispatch(job._id.toString(), {
+          reason: 'live Refrens lead has GST blocking tag',
+          matchedSkipTags: liveTagCheck.matchedSkipTags,
+          crmLead: {
+            leadId: job.refrensLeadId,
+            tagIds: liveTagCheck.tagIds,
+          },
+        });
+
+        logger.info('Outbound GST call skipped by live Refrens tag guard', {
+          jobId: job._id.toString(),
+          refrensLeadId: job.refrensLeadId,
+          matchedSkipTags: liveTagCheck.matchedSkipTags,
+        });
+        return;
+      }
+
       const payload = buildOutboundDispatchPayload(job);
       const result = await dispatchSipCall(payload);
       const webhookDeadlineAt = new Date(Date.now() + getWebhookTimeoutMs());

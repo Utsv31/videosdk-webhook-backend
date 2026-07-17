@@ -251,6 +251,28 @@ sM1iZbCixqm7Ldibszs2f  Identity Confirmed
 
 `a4Anq_x2Vmere1G-AqRXB` / `Voice AI attempt` is not a blocking tag by itself.
 
+The backend keeps only one active outbound job per `sourceKey + leadId`. Active jobs block duplicate first-call dispatches while they are still controlling execution:
+
+```text
+scheduled
+dispatching
+dispatched
+webhook_started
+```
+
+Terminal jobs are soft-closed with `active=false`, `terminalStatus`, `closeReason`, and `closedAt`, so they remain available for audit without blocking a future valid run:
+
+```text
+summary_received
+webhook_timeout
+dispatch_failed
+pre_dispatch_check_failed
+skipped
+skipped_before_dispatch
+```
+
+Before dispatching the actual VideoSDK call, the outbound worker also performs a live Refrens `GET /leads/{leadId}` check. If the current CRM lead has any blocking tag id, the job is marked `skipped_before_dispatch` and no call is made. This protects against stale Metabase results.
+
 Eligible leads are stored in `outbound_call_jobs` and dispatched by the outbound call worker:
 
 - one job is dispatched per worker tick
@@ -276,8 +298,11 @@ Useful Mongo filters:
 ```js
 { sourceKey: "gst_unassigned_leads" }
 { refrensLeadId: "lead_id_here" }
+{ active: true }
 { status: "skipped" }
 { status: "webhook_timeout" }
+{ status: "pre_dispatch_check_failed" }
+{ status: "skipped_before_dispatch" }
 { outboundJobId: "job_id_here" }
 ```
 

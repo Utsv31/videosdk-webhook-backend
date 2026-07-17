@@ -112,6 +112,7 @@ async function getOutboundCallJobsCollection() {
   if (!outboundJobIndexesReady) {
     await collection.createIndex({ dedupeKey: 1 }, { unique: true });
     await collection.createIndex({ status: 1, scheduledAt: 1 });
+    await collection.createIndex({ sourceKey: 1, refrensLeadId: 1, active: 1 });
     await collection.createIndex({ refrensLeadId: 1, createdAt: -1 });
     await collection.createIndex({ outboundJobId: 1 });
     await collection.createIndex({ callId: 1 });

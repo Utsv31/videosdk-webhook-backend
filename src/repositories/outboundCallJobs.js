@@ -7,6 +7,14 @@ const ACTIVE_JOB_STATUSES = [
   'dispatched',
   'webhook_started',
 ];
+const TERMINAL_JOB_STATUSES = [
+  'summary_received',
+  'webhook_timeout',
+  'dispatch_failed',
+  'pre_dispatch_check_failed',
+  'skipped',
+  'skipped_before_dispatch',
+];
 
 function toObjectId(id) {
   return typeof id === 'string' ? new ObjectId(id) : id;
@@ -25,6 +33,7 @@ async function findActiveJobForLead({ sourceKey, refrensLeadId }) {
   return collection.findOne({
     sourceKey,
     refrensLeadId,
+    active: true,
     status: { $in: ACTIVE_JOB_STATUSES },
   });
 }
@@ -59,7 +68,11 @@ async function createOutboundCallJob({
     stage: lead.stage || null,
     tags: lead.tags || [],
     rawRow,
+    active: true,
     status: 'scheduled',
+    terminalStatus: null,
+    closeReason: null,
+    closedAt: null,
     skipReason: null,
     matchedSkipTags: [],
     scheduledAt,
@@ -81,6 +94,9 @@ async function createOutboundCallJob({
       callSummaryReceived: false,
       callSummaryAt: null,
       callSummaryEventId: null,
+      callHangupReceived: false,
+      callHangupAt: null,
+      callHangupEventId: null,
       deadlineAt: null,
       timeoutCount: 0,
     },
@@ -120,7 +136,11 @@ async function createSkippedOutboundCallJob({
     stage: lead.stage || null,
     tags: lead.tags || [],
     rawRow,
+    active: false,
     status: 'skipped',
+    terminalStatus: 'skipped',
+    closeReason: skipReason,
+    closedAt: now,
     skipReason,
     matchedSkipTags: matchedSkipTags || [],
     createdAt: now,
@@ -128,6 +148,57 @@ async function createSkippedOutboundCallJob({
   });
 
   return collection.findOne({ _id: result.insertedId });
+}
+
+async function markOutboundJobSkippedBeforeDispatch(jobId, { reason, matchedSkipTags, crmLead }) {
+  if (!jobId || !isMongoConfigured()) {
+    return;
+  }
+
+  const collection = await getOutboundCallJobsCollection();
+  await collection.updateOne(
+    { _id: toObjectId(jobId) },
+    {
+      $set: {
+        active: false,
+        status: 'skipped_before_dispatch',
+        terminalStatus: 'skipped_before_dispatch',
+        closeReason: reason,
+        skipReason: reason,
+        matchedSkipTags: matchedSkipTags || [],
+        crmLeadSnapshot: crmLead || null,
+        skippedAt: new Date(),
+        closedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    },
+  );
+}
+
+async function markOutboundJobPreDispatchCheckFailed(jobId, error) {
+  if (!jobId || !isMongoConfigured()) {
+    return;
+  }
+
+  const collection = await getOutboundCallJobsCollection();
+  const now = new Date();
+  await collection.updateOne(
+    { _id: toObjectId(jobId) },
+    {
+      $set: {
+        active: false,
+        status: 'pre_dispatch_check_failed',
+        terminalStatus: 'pre_dispatch_check_failed',
+        closeReason: 'live Refrens pre-dispatch check failed',
+        failedAt: now,
+        closedAt: now,
+        lastError: error?.message || 'Unknown Refrens pre-dispatch check error',
+        preDispatchCheckStatusCode: error?.response?.status || null,
+        preDispatchCheckResponse: error?.response?.data || null,
+        updatedAt: now,
+      },
+    },
+  );
 }
 
 async function claimNextOutboundCallJob() {
@@ -139,11 +210,13 @@ async function claimNextOutboundCallJob() {
   const now = new Date();
   const result = await collection.findOneAndUpdate(
     {
+      active: true,
       status: 'scheduled',
       scheduledAt: { $lte: now },
     },
     {
       $set: {
+        active: true,
         status: 'dispatching',
         lockedAt: now,
         updatedAt: now,
@@ -169,6 +242,7 @@ async function markOutboundJobDispatched(jobId, { payload, result, webhookDeadli
     {
       $set: {
         status: 'dispatched',
+        active: true,
         outboundJobId: jobId.toString(),
         dispatchPayload: payload,
         dispatchResult: result,
@@ -195,8 +269,12 @@ async function markOutboundJobDispatchFailed(jobId, error) {
     { _id: toObjectId(jobId) },
     {
       $set: {
+        active: false,
         status: 'dispatch_failed',
+        terminalStatus: 'dispatch_failed',
+        closeReason: 'VideoSDK SIP dispatch failed',
         failedAt: new Date(),
+        closedAt: new Date(),
         lastError: error?.message || 'Unknown VideoSDK dispatch error',
         dispatchResult: error?.response?.data || null,
         dispatchStatusCode: error?.response?.status || null,
@@ -216,6 +294,29 @@ async function markOutboundJobWebhookReceived({ outboundJobId, callId, roomId, w
 
   const collection = await getOutboundCallJobsCollection();
   const now = new Date();
+  const eventObjectId = isValidObjectId(eventId) ? toObjectId(eventId) : null;
+
+  if (webhookType === 'call-hangup') {
+    await collection.updateOne(
+      { _id: toObjectId(outboundJobId) },
+      {
+        $set: {
+          callId: callId || null,
+          roomId: roomId || null,
+          updatedAt: now,
+          'webhook.callHangupReceived': true,
+          'webhook.callHangupAt': now,
+          'webhook.callHangupEventId': eventObjectId,
+        },
+      },
+    );
+    return collection.findOne({ _id: toObjectId(outboundJobId) });
+  }
+
+  if (!['call-started', 'call-summary'].includes(webhookType)) {
+    return collection.findOne({ _id: toObjectId(outboundJobId) });
+  }
+
   const isSummary = webhookType === 'call-summary';
   const update = {
     $set: {
@@ -224,21 +325,32 @@ async function markOutboundJobWebhookReceived({ outboundJobId, callId, roomId, w
       updatedAt: now,
       ...(isSummary
         ? {
+          active: false,
           status: 'summary_received',
+          terminalStatus: 'summary_received',
+          closeReason: 'summary webhook received',
+          closedAt: now,
           'webhook.callSummaryReceived': true,
           'webhook.callSummaryAt': now,
-          'webhook.callSummaryEventId': isValidObjectId(eventId) ? toObjectId(eventId) : null,
+          'webhook.callSummaryEventId': eventObjectId,
         }
         : {
+          active: true,
           status: 'webhook_started',
           'webhook.callStartedReceived': true,
           'webhook.callStartedAt': now,
-          'webhook.callStartedEventId': isValidObjectId(eventId) ? toObjectId(eventId) : null,
+          'webhook.callStartedEventId': eventObjectId,
         }),
     },
   };
 
-  await collection.updateOne({ _id: toObjectId(outboundJobId) }, update);
+  await collection.updateOne(
+    {
+      _id: toObjectId(outboundJobId),
+      ...(isSummary ? {} : { status: { $nin: TERMINAL_JOB_STATUSES } }),
+    },
+    update,
+  );
   return collection.findOne({ _id: toObjectId(outboundJobId) });
 }
 
@@ -250,6 +362,7 @@ async function findWebhookTimedOutJobs(limit = 10) {
   const collection = await getOutboundCallJobsCollection();
   return collection.find({
     status: 'dispatched',
+    active: true,
     'webhook.callStartedReceived': false,
     'webhook.callSummaryReceived': false,
     'webhook.deadlineAt': { $lte: new Date() },
@@ -267,6 +380,10 @@ async function requeueOutboundJobAfterWebhookTimeout(job, scheduledAt, scheduled
     {
       $set: {
         status: 'scheduled',
+        active: true,
+        terminalStatus: null,
+        closeReason: null,
+        closedAt: null,
         scheduledAt,
         scheduledAtIst,
         lastError: 'No VideoSDK webhook received before deadline; requeued dispatch',
@@ -290,8 +407,12 @@ async function markOutboundJobWebhookTimeout(job) {
     { _id: job._id },
     {
       $set: {
+        active: false,
         status: 'webhook_timeout',
+        terminalStatus: 'webhook_timeout',
+        closeReason: 'No VideoSDK webhook received before deadline',
         timedOutAt: new Date(),
+        closedAt: new Date(),
         lastError: 'No VideoSDK webhook received before deadline',
         updatedAt: new Date(),
       },
@@ -304,6 +425,7 @@ async function markOutboundJobWebhookTimeout(job) {
 
 module.exports = {
   ACTIVE_JOB_STATUSES,
+  TERMINAL_JOB_STATUSES,
   claimNextOutboundCallJob,
   createOutboundCallJob,
   createSkippedOutboundCallJob,
@@ -311,6 +433,8 @@ module.exports = {
   findWebhookTimedOutJobs,
   markOutboundJobDispatched,
   markOutboundJobDispatchFailed,
+  markOutboundJobPreDispatchCheckFailed,
+  markOutboundJobSkippedBeforeDispatch,
   markOutboundJobWebhookReceived,
   markOutboundJobWebhookTimeout,
   requeueOutboundJobAfterWebhookTimeout,
