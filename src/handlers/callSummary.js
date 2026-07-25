@@ -13,6 +13,7 @@ const {
   markRetryDecision,
 } = require('../repositories/callEvents');
 const { scheduleGstRetryIfNeeded } = require('./gstRetry');
+const { markRetryJobSummaryReceived } = require('../repositories/retryJobs');
 const { adhoc, gst, parsePayload } = require('../agents');
 const { normalizeRefrensLeadId } = require('../agents/common');
 const logger = require('../utils/logger');
@@ -83,6 +84,7 @@ async function processCallSummary(body, options = {}) {
   });
 
   await markEventParsed(eventId, parsed, isPositive);
+  await markRetryJobSummaryReceived({ parsed, eventId });
 
   async function handleRetryDecision() {
     if (parsed.agentType !== AGENT_TYPES.GST) {

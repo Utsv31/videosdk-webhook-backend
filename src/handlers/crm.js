@@ -8,7 +8,7 @@ const GST_PATCH_CONFIG = {
     voiceAiAttempt: 'Voice AI attempt',
     identityConfirmed: 'Identity Confirmed',
     aiDemoRequested: 'AI Demo Requested',
-    salesCallback: 'Sales Person callback',
+    salesCallback: 'Sales Person Callback',
   },
   stages: {
     identityConfirmed: '1.e AI Contact - Identity Confirmed',

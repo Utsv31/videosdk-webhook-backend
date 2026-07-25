@@ -84,6 +84,7 @@ async function getRetryJobsCollection() {
     await collection.createIndex({ dedupeKey: 1 }, { unique: true });
     await collection.createIndex({ status: 1, scheduledAt: 1 });
     await collection.createIndex({ callId: 1, agentType: 1 });
+    await collection.createIndex({ refrensLeadId: 1, status: 1, scheduledAt: 1 });
     retryIndexesReady = true;
   }
 

@@ -9,6 +9,7 @@ const {
   createSkippedOutboundCallJob,
   findActiveJobForLead,
 } = require('../repositories/outboundCallJobs');
+const { findActiveRetryJobForLead } = require('../repositories/retryJobs');
 const { applyCallWindow } = require('../utils/businessHours');
 const logger = require('../utils/logger');
 
@@ -102,7 +103,20 @@ function getMaxRunLeadResults() {
   return Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_MAX_RUN_LEAD_RESULTS;
 }
 
-function buildRunLeadResult({ lead, status, reason, matchedSkipTags, jobId, activeJobId, activeJobStatus, scheduledWindow }) {
+function buildRunLeadResult({
+  lead,
+  status,
+  reason,
+  matchedSkipTags,
+  jobId,
+  activeJobId,
+  activeJobStatus,
+  activeRetryJobId,
+  activeRetryJobStatus,
+  activeRetryAttempt,
+  activeRetryScheduledAtIst,
+  scheduledWindow,
+}) {
   return {
     leadId: lead.leadId || null,
     phone: lead.phone || '',
@@ -115,6 +129,10 @@ function buildRunLeadResult({ lead, status, reason, matchedSkipTags, jobId, acti
     jobId: jobId || null,
     activeJobId: activeJobId || null,
     activeJobStatus: activeJobStatus || null,
+    activeRetryJobId: activeRetryJobId || null,
+    activeRetryJobStatus: activeRetryJobStatus || null,
+    activeRetryAttempt: activeRetryAttempt || null,
+    activeRetryScheduledAtIst: activeRetryScheduledAtIst || null,
     scheduledAt: scheduledWindow?.scheduledAt || null,
     scheduledAtIst: scheduledWindow?.scheduledAtIst || null,
   };
@@ -147,6 +165,21 @@ async function classifyLeadForGstCall({ sourceKey, lead }) {
       matchedSkipTags: [],
       activeJobId: activeJob._id?.toString(),
       activeJobStatus: activeJob.status || null,
+      shouldCreateSkippedJob: false,
+    };
+  }
+
+  const activeRetryJob = await findActiveRetryJobForLead(lead.leadId);
+
+  if (activeRetryJob) {
+    return {
+      eligible: false,
+      reason: 'active retry job already exists for lead',
+      matchedSkipTags: [],
+      activeRetryJobId: activeRetryJob._id?.toString(),
+      activeRetryJobStatus: activeRetryJob.status || null,
+      activeRetryAttempt: activeRetryJob.retryAttempt || null,
+      activeRetryScheduledAtIst: activeRetryJob.scheduledAtIst || null,
       shouldCreateSkippedJob: false,
     };
   }
@@ -253,6 +286,10 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
           jobId: skippedJob?._id?.toString() || null,
           activeJobId: classification.activeJobId || null,
           activeJobStatus: classification.activeJobStatus || null,
+          activeRetryJobId: classification.activeRetryJobId || null,
+          activeRetryJobStatus: classification.activeRetryJobStatus || null,
+          activeRetryAttempt: classification.activeRetryAttempt || null,
+          activeRetryScheduledAtIst: classification.activeRetryScheduledAtIst || null,
         });
         addRunLeadResult(buildRunLeadResult({
           lead,
@@ -262,6 +299,10 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
           jobId: skippedJob?._id?.toString() || null,
           activeJobId: classification.activeJobId || null,
           activeJobStatus: classification.activeJobStatus || null,
+          activeRetryJobId: classification.activeRetryJobId || null,
+          activeRetryJobStatus: classification.activeRetryJobStatus || null,
+          activeRetryAttempt: classification.activeRetryAttempt || null,
+          activeRetryScheduledAtIst: classification.activeRetryScheduledAtIst || null,
         }));
         continue;
       }

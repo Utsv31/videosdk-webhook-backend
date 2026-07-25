@@ -292,6 +292,24 @@ dispatched
 webhook_started
 ```
 
+The backend also blocks a new Metabase first-call for the same `refrensLeadId` if a GST retry job already exists in one of these states:
+
+```text
+scheduled
+dispatching
+dispatched
+```
+
+In that case, the Metabase run stores the row as skipped with:
+
+```text
+reason: active retry job already exists for lead
+activeRetryJobId
+activeRetryJobStatus
+activeRetryAttempt
+activeRetryScheduledAtIst
+```
+
 Terminal jobs are soft-closed with `active=false`, `terminalStatus`, `closeReason`, and `closedAt`, so they remain available for audit without blocking a future valid run:
 
 ```text

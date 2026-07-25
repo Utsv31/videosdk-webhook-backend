@@ -2,6 +2,12 @@ const { ObjectId } = require('mongodb');
 const { getRetryJobsCollection, isMongoConfigured } = require('../services/mongo');
 const logger = require('../utils/logger');
 
+const ACTIVE_RETRY_JOB_STATUSES = [
+  'scheduled',
+  'dispatching',
+  'dispatched',
+];
+
 function buildRetryDedupeKey({ agentType, leadId, callId, nextAttempt }) {
   const stableLeadKey = leadId || callId || 'unknown';
   return `${agentType || 'unknown'}:${stableLeadKey}:retry:${nextAttempt}`;
@@ -73,6 +79,23 @@ async function createRetryJob({
   return collection.findOne({ dedupeKey });
 }
 
+async function findActiveRetryJobForLead(refrensLeadId) {
+  if (!isMongoConfigured() || !refrensLeadId) {
+    return null;
+  }
+
+  const collection = await getRetryJobsCollection();
+  return collection.findOne(
+    {
+      refrensLeadId,
+      status: { $in: ACTIVE_RETRY_JOB_STATUSES },
+    },
+    {
+      sort: { scheduledAt: 1, createdAt: 1 },
+    },
+  );
+}
+
 async function claimDueRetryJobs(limit = 5) {
   if (!isMongoConfigured()) {
     return [];
@@ -114,6 +137,44 @@ async function claimDueRetryJobs(limit = 5) {
   }
 
   return jobs;
+}
+
+async function markRetryJobSummaryReceived({ parsed, eventId }) {
+  if (!parsed?.refrensLeadId || !parsed.retryAttempt || !isMongoConfigured()) {
+    return null;
+  }
+
+  const retryAttempt = Number.parseInt(parsed.retryAttempt, 10);
+
+  if (!Number.isInteger(retryAttempt) || retryAttempt <= 1) {
+    return null;
+  }
+
+  const collection = await getRetryJobsCollection();
+  const now = new Date();
+  const result = await collection.findOneAndUpdate(
+    {
+      refrensLeadId: parsed.refrensLeadId,
+      retryAttempt,
+      status: { $in: ACTIVE_RETRY_JOB_STATUSES },
+    },
+    {
+      $set: {
+        status: 'summary_received',
+        terminalStatus: 'summary_received',
+        callId: parsed.callId || null,
+        summaryEventId: eventId ? new ObjectId(eventId) : null,
+        completedAt: now,
+        updatedAt: now,
+      },
+    },
+    {
+      sort: { updatedAt: -1 },
+      returnDocument: 'after',
+    },
+  );
+
+  return result?.value || result;
 }
 
 async function markRetryJobDispatched(jobId, result) {
@@ -204,10 +265,13 @@ async function cancelPendingRetryJobsForLead(refrensLeadId, reason) {
 }
 
 module.exports = {
+  ACTIVE_RETRY_JOB_STATUSES,
   buildRetryDedupeKey,
   cancelPendingRetryJobsForLead,
   createRetryJob,
+  findActiveRetryJobForLead,
   claimDueRetryJobs,
+  markRetryJobSummaryReceived,
   markRetryJobDispatched,
   markRetryJobFailed,
   markRetryJobRescheduled,
