@@ -1,8 +1,18 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { readSecret } = require('../utils/secrets');
+
+function getVideoSdkAuthToken() {
+  return readSecret('VIDEOSDK_AUTH_TOKEN', {
+    defaultFileNames: [
+      'videosdk_auth_token',
+      'videosdk_auth_token.txt',
+    ],
+  });
+}
 
 function getVideoSdkConfig() {
-  const authToken = process.env.VIDEOSDK_AUTH_TOKEN;
+  const authToken = getVideoSdkAuthToken();
   const baseUrl = (process.env.VIDEOSDK_API_BASE_URL || 'https://api.videosdk.live').replace(/\/$/, '');
 
   if (!authToken) {
@@ -63,5 +73,6 @@ async function dispatchSipCall(payload) {
 
 module.exports = {
   dispatchSipCall,
+  getVideoSdkAuthToken,
   getVideoSdkConfig,
 };

@@ -1,10 +1,16 @@
 const express = require('express');
 const { runGstUnassignedMetabaseImport } = require('../handlers/metabaseGstUnassigned');
+const { readSecret } = require('../utils/secrets');
 
 const router = express.Router();
 
 function isAuthorized(req) {
-  const token = process.env.JOBS_API_TOKEN;
+  const token = readSecret('JOBS_API_TOKEN', {
+    defaultFileNames: [
+      'jobs_api_token',
+      'jobs_api_token.txt',
+    ],
+  });
 
   if (!token) {
     return true;

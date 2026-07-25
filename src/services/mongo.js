@@ -1,5 +1,6 @@
 const { MongoClient } = require('mongodb');
 const logger = require('../utils/logger');
+const { readSecret } = require('../utils/secrets');
 
 let client;
 let db;
@@ -9,7 +10,16 @@ let metabaseRunIndexesReady = false;
 let outboundJobIndexesReady = false;
 
 function isMongoConfigured() {
-  return Boolean(process.env.MONGODB_URI);
+  return Boolean(getMongoUri());
+}
+
+function getMongoUri() {
+  return readSecret('MONGODB_URI', {
+    defaultFileNames: [
+      'mongodb_uri',
+      'mongodb_uri.txt',
+    ],
+  });
 }
 
 async function getDb() {
@@ -21,7 +31,7 @@ async function getDb() {
     return db;
   }
 
-  client = new MongoClient(process.env.MONGODB_URI, {
+  client = new MongoClient(getMongoUri(), {
     maxPoolSize: 10,
   });
 
@@ -138,6 +148,7 @@ async function closeMongo() {
 module.exports = {
   isMongoConfigured,
   getDb,
+  getMongoUri,
   getCallEventsCollection,
   getRetryJobsCollection,
   getMetabaseRunsCollection,

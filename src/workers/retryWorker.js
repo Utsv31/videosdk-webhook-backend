@@ -4,7 +4,7 @@ const {
   markRetryJobFailed,
   markRetryJobRescheduled,
 } = require('../repositories/retryJobs');
-const { dispatchSipCall } = require('../services/videosdk');
+const { dispatchSipCall, getVideoSdkAuthToken } = require('../services/videosdk');
 const { applyCallWindow, isWithinCallWindow } = require('../utils/businessHours');
 const logger = require('../utils/logger');
 
@@ -18,7 +18,7 @@ async function processDueRetryJobs() {
     return;
   }
 
-  if (!process.env.VIDEOSDK_AUTH_TOKEN) {
+  if (!getVideoSdkAuthToken()) {
     logger.warn('Retry worker skipped because VIDEOSDK_AUTH_TOKEN is not configured');
     return;
   }

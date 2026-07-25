@@ -1,9 +1,20 @@
 const axios = require('axios');
+const { readSecret } = require('../utils/secrets');
 
 function getMetabaseConfig() {
   const baseUrl = (process.env.METABASE_URL || '').replace(/\/$/, '');
-  const apiKey = process.env.METABASE_API_KEY;
-  const sessionToken = process.env.METABASE_SESSION_TOKEN;
+  const apiKey = readSecret('METABASE_API_KEY', {
+    defaultFileNames: [
+      'metabase_api_key',
+      'metabase_api_key.txt',
+    ],
+  });
+  const sessionToken = readSecret('METABASE_SESSION_TOKEN', {
+    defaultFileNames: [
+      'metabase_session_token',
+      'metabase_session_token.txt',
+    ],
+  });
 
   if (!baseUrl) {
     throw new Error('METABASE_URL is not configured');

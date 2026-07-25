@@ -1,5 +1,7 @@
+const crypto = require('crypto');
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { readSecret, requireSecret } = require('../utils/secrets');
 
 const GST_PATCH_CONFIG = {
   tags: {
@@ -14,14 +16,118 @@ const GST_PATCH_CONFIG = {
   },
 };
 
-function getCrmConfig() {
-  const apiKey = process.env.REFRENS_API_KEY;
-  const baseUrl = (process.env.REFRENS_API_BASE_URL || 'https://api.refrens.com').replace(/\/$/, '');
-  const businessSlug = process.env.REFRENS_BUSINESS_SLUG || 'crm-lead-create';
+let cachedRefrensToken = null;
+let cachedRefrensTokenExpiresAt = 0;
 
-  if (!apiKey) {
+function base64UrlJson(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function getRefrensStaticToken() {
+  return readSecret('REFRENS_API_KEY', {
+    defaultFileNames: [
+      'refrens_api_key',
+      'refrens_api_key.txt',
+    ],
+  });
+}
+
+function getRefrensPrivateKey() {
+  return readSecret('REFRENS_PRIVATE_KEY', {
+    defaultFileNames: [
+      'refrens_private_key.pem',
+      'refrens_private_key',
+    ],
+    trim: false,
+  });
+}
+
+function signRefrensToken({ appId, privateKey, expiresInSeconds }) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = {
+    alg: 'ES256',
+    typ: 'JWT',
+  };
+  const payload = {
+    iss: appId,
+    aud: 'serana',
+    sub: appId,
+    iat: now,
+    exp: now + expiresInSeconds,
+    auth: {
+      entity: 'app',
+      strategy: 'app-iss-app-token',
+    },
+  };
+  const signingInput = `${base64UrlJson(header)}.${base64UrlJson(payload)}`;
+  const signature = crypto.sign(
+    'sha256',
+    Buffer.from(signingInput),
+    {
+      key: privateKey,
+      dsaEncoding: 'ieee-p1363',
+    },
+  ).toString('base64url');
+
+  return {
+    token: `${signingInput}.${signature}`,
+    expiresAtMs: (payload.exp * 1000),
+  };
+}
+
+function getRefrensSelfSignedToken() {
+  const appId = requireSecret('REFRENS_APP_ID', {
+    defaultFileNames: [
+      'refrens_app_id',
+      'refrens_app_id.txt',
+    ],
+  });
+  const privateKey = getRefrensPrivateKey();
+
+  if (!privateKey) {
+    throw new Error('REFRENS_PRIVATE_KEY is not configured');
+  }
+
+  const now = Date.now();
+  const refreshBufferMs = 5 * 60 * 1000;
+
+  if (cachedRefrensToken && cachedRefrensTokenExpiresAt - refreshBufferMs > now) {
+    return cachedRefrensToken;
+  }
+
+  const expiresInSeconds = Number.parseInt(process.env.REFRENS_TOKEN_EXPIRES_IN_SECONDS, 10) || 60 * 60;
+  const signed = signRefrensToken({
+    appId,
+    privateKey,
+    expiresInSeconds: Math.min(expiresInSeconds, 24 * 60 * 60),
+  });
+
+  cachedRefrensToken = signed.token;
+  cachedRefrensTokenExpiresAt = signed.expiresAtMs;
+
+  return cachedRefrensToken;
+}
+
+function getRefrensAuthToken() {
+  const authMode = process.env.REFRENS_AUTH_MODE || 'static_token';
+
+  if (authMode === 'self_signed') {
+    return getRefrensSelfSignedToken();
+  }
+
+  const staticToken = getRefrensStaticToken();
+
+  if (!staticToken) {
     throw new Error('REFRENS_API_KEY is not configured');
   }
+
+  return staticToken;
+}
+
+function getCrmConfig() {
+  const apiKey = getRefrensAuthToken();
+  const baseUrl = (process.env.REFRENS_API_BASE_URL || 'https://api.refrens.com').replace(/\/$/, '');
+  const businessSlug = process.env.REFRENS_BUSINESS_SLUG || 'crm-lead-create';
 
   return {
     apiKey,

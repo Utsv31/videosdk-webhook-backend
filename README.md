@@ -44,11 +44,14 @@ Copy `.env.example` to `.env` and fill in real values:
 cp .env.example .env
 ```
 
-Required values:
+Non-secret environment values:
 
 ```env
 PORT=3000
-REFRENS_API_KEY=
+REFRENS_AUTH_MODE=self_signed
+REFRENS_APP_ID_FILE=/etc/secrets/refrens_app_id
+REFRENS_PRIVATE_KEY_FILE=/etc/secrets/refrens_private_key.pem
+REFRENS_TOKEN_EXPIRES_IN_SECONDS=3600
 REFRENS_API_BASE_URL=https://api.refrens.com
 REFRENS_BUSINESS_SLUG=crm-lead-create
 REFRENS_DEFAULT_PIPELINE=Sales Pipeline
@@ -57,7 +60,7 @@ GST_AGENT_ID=ag_n8irvh
 GST_SIP_CALL_FROM=+918035017510
 GST_ROUTING_RULE_ID=rr_fogwqz
 ADHOC_AGENT_ID=ag_l901ju
-VIDEOSDK_AUTH_TOKEN=
+VIDEOSDK_AUTH_TOKEN_FILE=/etc/secrets/videosdk_auth_token
 VIDEOSDK_API_BASE_URL=https://api.videosdk.live
 VIDEOSDK_WEBHOOK_URL=https://videosdk-webhook-backend.onrender.com/webhook
 RETRY_WORKER_ENABLED=true
@@ -69,10 +72,10 @@ OUTBOUND_CALL_MAX_DISPATCH_ATTEMPTS=2
 CALL_WINDOW_START_HOUR_IST=9
 CALL_WINDOW_END_HOUR_IST=21
 METABASE_URL=https://metabase-proded4fa3ab.azurewebsites.net
-METABASE_API_KEY=
+METABASE_API_KEY_FILE=/etc/secrets/metabase_api_key
 METABASE_GST_UNASSIGNED_QUESTION_ID=4645
-JOBS_API_TOKEN=
-MONGODB_URI=mongodb+srv://<db_username>:<db_password>@cluster0.qdrculk.mongodb.net/videosdk_crm?retryWrites=true&w=majority&appName=Cluster0
+JOBS_API_TOKEN_FILE=/etc/secrets/jobs_api_token
+MONGODB_URI_FILE=/etc/secrets/mongodb_uri
 MONGODB_DB_NAME=videosdk_crm
 MONGODB_EVENTS_COLLECTION=call_events
 MONGODB_RETRY_JOBS_COLLECTION=call_retry_jobs
@@ -83,11 +86,40 @@ MONGODB_OUTBOUND_CALL_JOBS_COLLECTION=outbound_call_jobs
 Optional:
 
 ```env
-VIDEOSDK_WEBHOOK_SECRET=
-METABASE_SESSION_TOKEN=
+REFRENS_API_KEY_FILE=/etc/secrets/refrens_api_key
+VIDEOSDK_WEBHOOK_SECRET_FILE=/etc/secrets/videosdk_webhook_secret
+METABASE_SESSION_TOKEN_FILE=/etc/secrets/metabase_session_token
 ```
 
 If `VIDEOSDK_WEBHOOK_SECRET` is set, the server expects an `x-videosdk-signature` HMAC SHA-256 signature. If VideoSDK uses a different signature scheme, update `src/utils/validateWebhook.js`.
+
+### Render Secret Files
+
+For production, store sensitive values in Render Secret Files instead of plain env values. The backend reads these default filenames from `/etc/secrets`:
+
+```text
+refrens_app_id
+refrens_private_key.pem
+videosdk_auth_token
+metabase_api_key
+jobs_api_token
+mongodb_uri
+```
+
+Optional secret files:
+
+```text
+refrens_api_key
+metabase_session_token
+videosdk_webhook_secret
+```
+
+Refrens auth supports two modes:
+
+- `REFRENS_AUTH_MODE=self_signed`: signs an ES256 JWT at runtime from `refrens_app_id` and `refrens_private_key.pem`.
+- default/static token mode: reads a issued token from `REFRENS_API_KEY` or `REFRENS_API_KEY_FILE`.
+
+Direct env values still work for local development, but secret files are preferred for Render production.
 
 ## Run Locally
 
@@ -368,7 +400,7 @@ POST https://api.videosdk.live/v2/sip/call
 Required retry env:
 
 ```env
-VIDEOSDK_AUTH_TOKEN=
+VIDEOSDK_AUTH_TOKEN_FILE=/etc/secrets/videosdk_auth_token
 VIDEOSDK_WEBHOOK_URL=https://videosdk-webhook-backend.onrender.com/webhook
 CALL_WINDOW_START_HOUR_IST=9
 CALL_WINDOW_END_HOUR_IST=21

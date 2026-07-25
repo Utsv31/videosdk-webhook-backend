@@ -9,7 +9,7 @@ const {
   requeueOutboundJobAfterWebhookTimeout,
 } = require('../repositories/outboundCallJobs');
 const { extractLeadTagIds, getLeadInCrm, isLeadNotFoundError } = require('../handlers/crm');
-const { dispatchSipCall } = require('../services/videosdk');
+const { dispatchSipCall, getVideoSdkAuthToken } = require('../services/videosdk');
 const { applyCallWindow, isWithinCallWindow } = require('../utils/businessHours');
 const logger = require('../utils/logger');
 
@@ -103,7 +103,7 @@ async function processOutboundCallJobs() {
     return;
   }
 
-  if (!process.env.VIDEOSDK_AUTH_TOKEN) {
+  if (!getVideoSdkAuthToken()) {
     logger.warn('Outbound call worker skipped because VIDEOSDK_AUTH_TOKEN is not configured');
     return;
   }

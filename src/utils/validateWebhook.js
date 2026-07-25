@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { readSecret } = require('./secrets');
 
 function normalizeSignature(signature) {
   if (!signature) {
@@ -22,7 +23,12 @@ function safeEqual(left, right) {
 }
 
 function validateWebhook(req) {
-  const secret = process.env.VIDEOSDK_WEBHOOK_SECRET;
+  const secret = readSecret('VIDEOSDK_WEBHOOK_SECRET', {
+    defaultFileNames: [
+      'videosdk_webhook_secret',
+      'videosdk_webhook_secret.txt',
+    ],
+  });
 
   if (!secret) {
     return {
