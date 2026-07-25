@@ -319,6 +319,29 @@ Run history is stored in:
 metabase_runs
 ```
 
+Each run document stores the aggregate counts plus a lead-level audit:
+
+```text
+leadIds
+queuedLeadIds
+skippedLeadIds
+leadResults
+leadResultsCount
+leadResultsTruncated
+```
+
+`leadResults` contains one compact record per fetched lead with:
+
+```text
+leadId, phone, name, businessName, stage, status, reason, matchedSkipTags, jobId, scheduledAtIst
+```
+
+By default, the backend stores up to 1000 lead results inside one run document. You can change that with:
+
+```env
+METABASE_RUN_LEAD_RESULTS_LIMIT=1000
+```
+
 First-call dispatch jobs are stored in:
 
 ```text

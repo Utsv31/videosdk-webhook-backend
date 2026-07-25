@@ -14,6 +14,7 @@ const logger = require('../utils/logger');
 
 const GST_UNASSIGNED_SOURCE_KEY = 'gst_unassigned_leads';
 const DEFAULT_GST_UNASSIGNED_QUESTION_ID = '4645';
+const DEFAULT_MAX_RUN_LEAD_RESULTS = 1000;
 
 const GST_TAG_IDS = {
   voiceAiAttempt: 'a4Anq_x2Vmere1G-AqRXB',
@@ -96,6 +97,29 @@ function normalizeLeadRow(row) {
   };
 }
 
+function getMaxRunLeadResults() {
+  const configured = Number.parseInt(process.env.METABASE_RUN_LEAD_RESULTS_LIMIT, 10);
+  return Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_MAX_RUN_LEAD_RESULTS;
+}
+
+function buildRunLeadResult({ lead, status, reason, matchedSkipTags, jobId, activeJobId, activeJobStatus, scheduledWindow }) {
+  return {
+    leadId: lead.leadId || null,
+    phone: lead.phone || '',
+    name: lead.name || '',
+    businessName: lead.businessName || '',
+    stage: lead.stage || '',
+    status,
+    reason: reason || null,
+    matchedSkipTags: matchedSkipTags || [],
+    jobId: jobId || null,
+    activeJobId: activeJobId || null,
+    activeJobStatus: activeJobStatus || null,
+    scheduledAt: scheduledWindow?.scheduledAt || null,
+    scheduledAtIst: scheduledWindow?.scheduledAtIst || null,
+  };
+}
+
 function getBlockingTags(lead) {
   return lead.tags
     .filter((tag) => tag.id && GST_FIRST_CALL_BLOCKING_TAGS.has(tag.id))
@@ -170,8 +194,35 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
       eligibleCount: 0,
       skippedCount: 0,
       queuedCount: 0,
+      leadResultsCount: 0,
+      leadResultsTruncated: false,
+      leadIds: [],
+      queuedLeadIds: [],
+      skippedLeadIds: [],
+      leadResults: [],
     };
     const jobs = [];
+    const maxRunLeadResults = getMaxRunLeadResults();
+
+    function addRunLeadResult(result) {
+      stats.leadResultsCount += 1;
+
+      if (result.leadId) {
+        stats.leadIds.push(result.leadId);
+        if (result.status === 'scheduled') {
+          stats.queuedLeadIds.push(result.leadId);
+        }
+        if (result.status === 'skipped') {
+          stats.skippedLeadIds.push(result.leadId);
+        }
+      }
+
+      if (stats.leadResults.length < maxRunLeadResults) {
+        stats.leadResults.push(result);
+      } else {
+        stats.leadResultsTruncated = true;
+      }
+    }
 
     for (const row of rows) {
       const lead = normalizeLeadRow(row);
@@ -203,6 +254,15 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
           activeJobId: classification.activeJobId || null,
           activeJobStatus: classification.activeJobStatus || null,
         });
+        addRunLeadResult(buildRunLeadResult({
+          lead,
+          status: 'skipped',
+          reason: classification.reason,
+          matchedSkipTags: classification.matchedSkipTags,
+          jobId: skippedJob?._id?.toString() || null,
+          activeJobId: classification.activeJobId || null,
+          activeJobStatus: classification.activeJobStatus || null,
+        }));
         continue;
       }
 
@@ -227,6 +287,12 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
         scheduledAt: scheduledWindow.scheduledAt,
         scheduledAtIst: scheduledWindow.scheduledAtIst,
       });
+      addRunLeadResult(buildRunLeadResult({
+        lead,
+        status: 'scheduled',
+        jobId: job?._id?.toString() || null,
+        scheduledWindow,
+      }));
     }
 
     await markMetabaseRunCompleted(runId, stats);
