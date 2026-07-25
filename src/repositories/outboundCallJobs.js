@@ -10,6 +10,7 @@ const ACTIVE_JOB_STATUSES = [
 const TERMINAL_JOB_STATUSES = [
   'summary_received',
   'webhook_timeout',
+  'summary_timeout',
   'dispatch_failed',
   'pre_dispatch_check_failed',
   'skipped',
@@ -361,10 +362,9 @@ async function findWebhookTimedOutJobs(limit = 10) {
 
   const collection = await getOutboundCallJobsCollection();
   return collection.find({
-    status: 'dispatched',
     active: true,
-    'webhook.callStartedReceived': false,
     'webhook.callSummaryReceived': false,
+    status: { $in: ['dispatched', 'webhook_started'] },
     'webhook.deadlineAt': { $lte: new Date() },
   }).sort({ 'webhook.deadlineAt': 1 }).limit(limit).toArray();
 }
@@ -423,6 +423,32 @@ async function markOutboundJobWebhookTimeout(job) {
   );
 }
 
+async function markOutboundJobSummaryTimeout(job) {
+  if (!job?._id || !isMongoConfigured()) {
+    return;
+  }
+
+  const collection = await getOutboundCallJobsCollection();
+  await collection.updateOne(
+    { _id: job._id },
+    {
+      $set: {
+        active: false,
+        status: 'summary_timeout',
+        terminalStatus: 'summary_timeout',
+        closeReason: 'VideoSDK webhook received but no summary webhook arrived before deadline',
+        timedOutAt: new Date(),
+        closedAt: new Date(),
+        lastError: 'VideoSDK call-started/call-hangup received, but call-summary was not received before deadline',
+        updatedAt: new Date(),
+      },
+      $inc: {
+        'webhook.timeoutCount': 1,
+      },
+    },
+  );
+}
+
 module.exports = {
   ACTIVE_JOB_STATUSES,
   TERMINAL_JOB_STATUSES,
@@ -437,5 +463,6 @@ module.exports = {
   markOutboundJobSkippedBeforeDispatch,
   markOutboundJobWebhookReceived,
   markOutboundJobWebhookTimeout,
+  markOutboundJobSummaryTimeout,
   requeueOutboundJobAfterWebhookTimeout,
 };

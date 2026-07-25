@@ -330,6 +330,7 @@ Eligible leads are stored in `outbound_call_jobs` and dispatched by the outbound
 - calls are still guarded by the 9 AM to 9 PM IST call window
 - the VideoSDK metadata includes `outboundJobId`, `refrensLeadId`, `sourceKey`, and `metabaseQuestionId`
 - if no webhook is received within 6 minutes, the job is requeued once by default
+- if `call-started` or `call-hangup` is received but `call-summary` is not received before the deadline, the job is closed as `summary_timeout`
 
 Run history is stored in:
 
@@ -374,6 +375,7 @@ Useful Mongo filters:
 { active: true }
 { status: "skipped" }
 { status: "webhook_timeout" }
+{ status: "summary_timeout" }
 { status: "pre_dispatch_check_failed" }
 { status: "skipped_before_dispatch" }
 { outboundJobId: "job_id_here" }
@@ -421,6 +423,15 @@ Retry jobs are deduped per lead and retry attempt. If a later webhook shows the 
 ```text
 status: cancelled
 ```
+
+If a retry call is dispatched but no retry `call-summary` arrives within `RETRY_CALL_SUMMARY_TIMEOUT_MS`, the retry job is marked:
+
+```text
+status: summary_timeout
+terminalStatus: summary_timeout
+```
+
+If `RETRY_CALL_SUMMARY_TIMEOUT_MS` is not configured, the backend uses `OUTBOUND_CALL_WEBHOOK_TIMEOUT_MS`.
 
 The original webhook record in `call_events` also stores the retry decision under:
 

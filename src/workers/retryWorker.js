@@ -1,17 +1,42 @@
 const {
   claimDueRetryJobs,
+  findRetryJobsMissingSummary,
   markRetryJobDispatched,
   markRetryJobFailed,
   markRetryJobRescheduled,
+  markRetryJobSummaryTimeout,
 } = require('../repositories/retryJobs');
 const { dispatchSipCall, getVideoSdkAuthToken } = require('../services/videosdk');
 const { applyCallWindow, isWithinCallWindow } = require('../utils/businessHours');
 const logger = require('../utils/logger');
 
 const DEFAULT_RETRY_WORKER_INTERVAL_MS = 60 * 1000;
+const DEFAULT_RETRY_SUMMARY_TIMEOUT_MS = 6 * 60 * 1000;
 
 let retryWorkerTimer = null;
 let retryWorkerRunning = false;
+
+function getRetrySummaryTimeoutMs() {
+  return Number.parseInt(
+    process.env.RETRY_CALL_SUMMARY_TIMEOUT_MS || process.env.OUTBOUND_CALL_WEBHOOK_TIMEOUT_MS,
+    10,
+  ) || DEFAULT_RETRY_SUMMARY_TIMEOUT_MS;
+}
+
+async function handleRetryJobsMissingSummary() {
+  const jobs = await findRetryJobsMissingSummary(10, getRetrySummaryTimeoutMs());
+
+  for (const job of jobs) {
+    await markRetryJobSummaryTimeout(job._id.toString());
+
+    logger.warn('Retry job summary timeout', {
+      retryJobId: job._id.toString(),
+      refrensLeadId: job.refrensLeadId,
+      retryAttempt: job.retryAttempt,
+      dispatchedAt: job.dispatchedAt?.toISOString?.(),
+    });
+  }
+}
 
 async function processDueRetryJobs() {
   if (retryWorkerRunning) {
@@ -23,18 +48,20 @@ async function processDueRetryJobs() {
     return;
   }
 
-  if (!isWithinCallWindow()) {
-    const nextWindow = applyCallWindow(new Date());
-    logger.info('Retry worker skipped because current time is outside call window', {
-      nextAllowedAt: nextWindow.scheduledAt.toISOString(),
-      nextAllowedAtIst: nextWindow.scheduledAtIst,
-    });
-    return;
-  }
-
   retryWorkerRunning = true;
 
   try {
+    await handleRetryJobsMissingSummary();
+
+    if (!isWithinCallWindow()) {
+      const nextWindow = applyCallWindow(new Date());
+      logger.info('Retry worker skipped because current time is outside call window', {
+        nextAllowedAt: nextWindow.scheduledAt.toISOString(),
+        nextAllowedAtIst: nextWindow.scheduledAtIst,
+      });
+      return;
+    }
+
     const jobs = await claimDueRetryJobs(5);
 
     for (const job of jobs) {

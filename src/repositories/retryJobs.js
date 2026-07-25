@@ -139,6 +139,19 @@ async function claimDueRetryJobs(limit = 5) {
   return jobs;
 }
 
+async function findRetryJobsMissingSummary(limit = 10, timeoutMs = 6 * 60 * 1000) {
+  if (!isMongoConfigured()) {
+    return [];
+  }
+
+  const collection = await getRetryJobsCollection();
+  const timedOutBefore = new Date(Date.now() - timeoutMs);
+  return collection.find({
+    status: 'dispatched',
+    dispatchedAt: { $lte: timedOutBefore },
+  }).sort({ dispatchedAt: 1 }).limit(limit).toArray();
+}
+
 async function markRetryJobSummaryReceived({ parsed, eventId }) {
   if (!parsed?.refrensLeadId || !parsed.retryAttempt || !isMongoConfigured()) {
     return null;
@@ -175,6 +188,27 @@ async function markRetryJobSummaryReceived({ parsed, eventId }) {
   );
 
   return result?.value || result;
+}
+
+async function markRetryJobSummaryTimeout(jobId) {
+  if (!jobId || !isMongoConfigured()) {
+    return;
+  }
+
+  const collection = await getRetryJobsCollection();
+  const now = new Date();
+  await collection.updateOne(
+    { _id: new ObjectId(jobId), status: 'dispatched' },
+    {
+      $set: {
+        status: 'summary_timeout',
+        terminalStatus: 'summary_timeout',
+        completedAt: now,
+        lastError: 'Retry call dispatched, but call-summary webhook was not received before deadline',
+        updatedAt: now,
+      },
+    },
+  );
 }
 
 async function markRetryJobDispatched(jobId, result) {
@@ -270,8 +304,10 @@ module.exports = {
   cancelPendingRetryJobsForLead,
   createRetryJob,
   findActiveRetryJobForLead,
+  findRetryJobsMissingSummary,
   claimDueRetryJobs,
   markRetryJobSummaryReceived,
+  markRetryJobSummaryTimeout,
   markRetryJobDispatched,
   markRetryJobFailed,
   markRetryJobRescheduled,

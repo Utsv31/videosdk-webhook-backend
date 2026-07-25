@@ -5,6 +5,7 @@ const {
   markOutboundJobDispatchFailed,
   markOutboundJobPreDispatchCheckFailed,
   markOutboundJobSkippedBeforeDispatch,
+  markOutboundJobSummaryTimeout,
   markOutboundJobWebhookTimeout,
   requeueOutboundJobAfterWebhookTimeout,
 } = require('../repositories/outboundCallJobs');
@@ -70,6 +71,24 @@ async function handleTimedOutOutboundJobs() {
   const timedOutJobs = await findWebhookTimedOutJobs(10);
 
   for (const job of timedOutJobs) {
+    const hasAnyWebhook = Boolean(
+      job.webhook?.callStartedReceived ||
+      job.webhook?.callHangupReceived,
+    );
+
+    if (hasAnyWebhook && !job.webhook?.callSummaryReceived) {
+      await markOutboundJobSummaryTimeout(job);
+
+      logger.warn('Outbound call job summary timeout; partial webhook sequence received', {
+        jobId: job._id.toString(),
+        refrensLeadId: job.refrensLeadId,
+        callStartedReceived: job.webhook?.callStartedReceived === true,
+        callHangupReceived: job.webhook?.callHangupReceived === true,
+        deadlineAt: job.webhook?.deadlineAt?.toISOString?.(),
+      });
+      continue;
+    }
+
     const maxDispatchAttempts = job.maxDispatchAttempts || 2;
 
     if ((job.dispatchAttempts || 0) < maxDispatchAttempts) {
