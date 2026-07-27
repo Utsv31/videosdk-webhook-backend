@@ -266,33 +266,7 @@ function extractLeadTagIds(leadResponse) {
 }
 
 function buildInternalNoteEntries(parsed) {
-  const genericNotes = [
-    parsed.callSummaryText && `VideoSDK call summary: ${parsed.callSummaryText}`,
-    [
-      parsed.callOutcome && `Outcome: ${parsed.callOutcome}`,
-      parsed.gstCallStatus && `Call status: ${parsed.gstCallStatus}`,
-      parsed.interestLevel && `Interest: ${parsed.interestLevel}`,
-      parsed.offerInterest && `Offer interest: ${parsed.offerInterest}`,
-      parsed.salesCallbackRequired && 'Sales callback required',
-      parsed.isRightBusiness && `Right business: ${parsed.isRightBusiness}`,
-      parsed.isNeedCallback && `Callback needed: ${parsed.isNeedCallback}`,
-      parsed.demoRequested && `Demo requested: ${parsed.demoRequested}`,
-      parsed.callbackTime && `Callback time: ${parsed.callbackTime}`,
-      parsed.retryAttempt && `Retry attempt: ${parsed.retryAttempt}`,
-      parsed.retryFlow && `Retry flow: ${parsed.retryFlow}`,
-    ].filter(Boolean).join('. '),
-    parsed.currentInvoicingPlatform && `Current invoicing platform: ${parsed.currentInvoicingPlatform}`,
-    parsed.requirementType && `Requirement type: ${parsed.requirementType}`,
-    parsed.businessNature && `Business nature: ${parsed.businessNature}`,
-    parsed.leadPriority && `Lead priority: ${parsed.leadPriority}`,
-    parsed.businessName && `Business name: ${parsed.businessName}`,
-    parsed.businessDescription && `Business description: ${parsed.businessDescription}`,
-    parsed.importantNotes && `Important notes: ${parsed.importantNotes}`,
-    parsed.recommendedAction && `Recommended action: ${parsed.recommendedAction}`,
-    parsed.callId && `VideoSDK callId: ${parsed.callId}`,
-  ];
-
-  return genericNotes.filter(Boolean).map(trimNoteEntry);
+  return parsed.callSummaryText ? [trimNoteEntry(parsed.callSummaryText)] : [];
 }
 
 function buildGstTags(parsed) {
@@ -321,12 +295,7 @@ function buildGstPatchLeadPayload(parsed) {
   const stage = getGstStage(parsed);
   const tagsAdd = buildGstTags(parsed);
   const noteEntries = buildInternalNoteEntries(parsed);
-  const payload = {
-    addInternalNotes: {
-      body: noteEntries.length ? noteEntries : ['GST VideoSDK call summary received.'],
-      clientRequestId: buildClientRequestId(parsed),
-    },
-  };
+  const payload = {};
 
   if (stage) {
     payload.pipeline = pipeline;
@@ -335,6 +304,13 @@ function buildGstPatchLeadPayload(parsed) {
 
   if (tagsAdd.length) {
     payload.tagsAdd = tagsAdd;
+  }
+
+  if (noteEntries.length) {
+    payload.addInternalNotes = {
+      body: noteEntries,
+      clientRequestId: buildClientRequestId(parsed),
+    };
   }
 
   return payload;
@@ -377,15 +353,18 @@ function buildPatchLeadPayload(parsed) {
   const shouldMoveStage = isAdhocPositiveSignal(parsed);
   const payload = {
     tagsAdd: [GST_PATCH_CONFIG.tags.voiceAiAttempt],
-    addInternalNotes: {
-      body: noteEntries.length ? noteEntries : ['VideoSDK call summary received.'],
-      clientRequestId: buildClientRequestId(parsed),
-    },
   };
 
   if (shouldMoveStage) {
     payload.pipeline = pipeline;
     payload.stage = stage;
+  }
+
+  if (noteEntries.length) {
+    payload.addInternalNotes = {
+      body: noteEntries,
+      clientRequestId: buildClientRequestId(parsed),
+    };
   }
 
   return payload;

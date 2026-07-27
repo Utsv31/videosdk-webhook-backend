@@ -500,7 +500,7 @@ If found, it patches:
 PATCH {REFRENS_API_BASE_URL}/api/v1/businesses/{REFRENS_BUSINESS_SLUG}/leads/{leadId}
 ```
 
-PATCH appends VideoSDK summary details as internal notes using `addInternalNotes` with a stable `clientRequestId`.
+PATCH appends only the VideoSDK summary text as an internal note using `addInternalNotes` with a stable `clientRequestId`.
 
 Ad hoc PATCH moves the lead to `REFRENS_DEFAULT_STAGE` only when the summary has a positive ad hoc signal such as `Interested`, `Callback Requested`, `Need Time`, `offer_interest=Interested`, or `sales_callback_required=true`. Without a positive signal, no pipeline or stage field is sent, so the lead stays in its existing LMS stage.
 
