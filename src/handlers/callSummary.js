@@ -86,15 +86,24 @@ async function processCallSummary(body, options = {}) {
   await markEventParsed(eventId, parsed, isPositive);
   await markRetryJobSummaryReceived({ parsed, eventId });
 
+  let retryDecisionHandled = false;
+
   async function handleRetryDecision() {
     if (parsed.agentType !== AGENT_TYPES.GST) {
       return null;
     }
 
+    if (retryDecisionHandled) {
+      return null;
+    }
+
+    retryDecisionHandled = true;
     const retryDecision = await scheduleGstRetryIfNeeded(eventId, parsed);
     await markRetryDecision(eventId, retryDecision);
     return retryDecision;
   }
+
+  await handleRetryDecision();
 
   if (parsed.refrensLeadId) {
     try {
@@ -106,8 +115,6 @@ async function processCallSummary(body, options = {}) {
         requestPayload: result.requestPayload,
         result,
       });
-
-      await handleRetryDecision();
 
       return result;
     } catch (error) {
