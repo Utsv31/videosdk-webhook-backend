@@ -14,6 +14,7 @@ const {
 } = require('../repositories/callEvents');
 const { scheduleGstRetryIfNeeded } = require('./gstRetry');
 const { markRetryJobSummaryReceived } = require('../repositories/retryJobs');
+const { markOutboundCohortClosed } = require('../repositories/outboundCallJobs');
 const { adhoc, gst, parsePayload } = require('../agents');
 const { normalizeRefrensLeadId } = require('../agents/common');
 const logger = require('../utils/logger');
@@ -100,6 +101,16 @@ async function processCallSummary(body, options = {}) {
     retryDecisionHandled = true;
     const retryDecision = await scheduleGstRetryIfNeeded(eventId, parsed);
     await markRetryDecision(eventId, retryDecision);
+
+    if (retryDecision && retryDecision.shouldRetry !== true) {
+      await markOutboundCohortClosed({
+        outboundJobId: parsed.outboundJobId,
+        sourceKey: parsed.sourceKey,
+        refrensLeadId: parsed.refrensLeadId,
+        reason: retryDecision.reason,
+      });
+    }
+
     return retryDecision;
   }
 

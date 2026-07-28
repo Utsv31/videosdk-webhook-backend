@@ -7,7 +7,6 @@ const GST_PATCH_CONFIG = {
   tags: {
     voiceAiAttempt: 'Voice AI attempt',
     identityConfirmed: 'Identity Confirmed',
-    aiDemoRequested: 'AI Demo Requested',
     salesCallback: 'Sales Person Callback',
   },
   stages: {
@@ -195,7 +194,7 @@ function isNo(value) {
 }
 
 function canRouteSalesCallback(parsed) {
-  return isYes(parsed.isNeedCallback) && !isNo(parsed.isRightBusiness);
+  return (isYes(parsed.isNeedCallback) || isYes(parsed.demoRequested)) && !isNo(parsed.isRightBusiness);
 }
 
 function isAdhocPositiveSignal(parsed) {
@@ -266,14 +265,16 @@ function extractLeadTagIds(leadResponse) {
 }
 
 function buildInternalNoteEntries(parsed) {
-  return parsed.callSummaryText ? [trimNoteEntry(parsed.callSummaryText)] : [];
+  return [
+    parsed.callSummaryText,
+    isYes(parsed.demoRequested) && 'Demo requested: yes',
+  ].filter(Boolean).map(trimNoteEntry);
 }
 
 function buildGstTags(parsed) {
   return uniqueValues([
     GST_PATCH_CONFIG.tags.voiceAiAttempt,
     isYes(parsed.isRightBusiness) && GST_PATCH_CONFIG.tags.identityConfirmed,
-    isYes(parsed.demoRequested) && GST_PATCH_CONFIG.tags.aiDemoRequested,
     canRouteSalesCallback(parsed) && GST_PATCH_CONFIG.tags.salesCallback,
   ]);
 }

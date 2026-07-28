@@ -39,6 +39,24 @@ async function findActiveJobForLead({ sourceKey, refrensLeadId }) {
   });
 }
 
+async function findClosedCohortJobForLead({ sourceKey, refrensLeadId }) {
+  if (!isMongoConfigured() || !sourceKey || !refrensLeadId) {
+    return null;
+  }
+
+  const collection = await getOutboundCallJobsCollection();
+  return collection.findOne(
+    {
+      sourceKey,
+      refrensLeadId,
+      cohortClosed: true,
+    },
+    {
+      sort: { cohortClosedAt: -1, closedAt: -1, updatedAt: -1 },
+    },
+  );
+}
+
 async function createOutboundCallJob({
   runId,
   sourceKey,
@@ -70,6 +88,9 @@ async function createOutboundCallJob({
     tags: lead.tags || [],
     rawRow,
     active: true,
+    cohortClosed: false,
+    cohortClosedAt: null,
+    cohortCloseReason: null,
     status: 'scheduled',
     terminalStatus: null,
     closeReason: null,
@@ -138,6 +159,9 @@ async function createSkippedOutboundCallJob({
     tags: lead.tags || [],
     rawRow,
     active: false,
+    cohortClosed: false,
+    cohortClosedAt: null,
+    cohortCloseReason: null,
     status: 'skipped',
     terminalStatus: 'skipped',
     closeReason: skipReason,
@@ -162,6 +186,9 @@ async function markOutboundJobSkippedBeforeDispatch(jobId, { reason, matchedSkip
     {
       $set: {
         active: false,
+        cohortClosed: true,
+        cohortClosedAt: new Date(),
+        cohortCloseReason: reason,
         status: 'skipped_before_dispatch',
         terminalStatus: 'skipped_before_dispatch',
         closeReason: reason,
@@ -271,6 +298,9 @@ async function markOutboundJobDispatchFailed(jobId, error) {
     {
       $set: {
         active: false,
+        cohortClosed: true,
+        cohortClosedAt: new Date(),
+        cohortCloseReason: 'VideoSDK SIP dispatch failed',
         status: 'dispatch_failed',
         terminalStatus: 'dispatch_failed',
         closeReason: 'VideoSDK SIP dispatch failed',
@@ -408,6 +438,9 @@ async function markOutboundJobWebhookTimeout(job) {
     {
       $set: {
         active: false,
+        cohortClosed: true,
+        cohortClosedAt: new Date(),
+        cohortCloseReason: 'No VideoSDK webhook received before deadline',
         status: 'webhook_timeout',
         terminalStatus: 'webhook_timeout',
         closeReason: 'No VideoSDK webhook received before deadline',
@@ -434,6 +467,9 @@ async function markOutboundJobSummaryTimeout(job) {
     {
       $set: {
         active: false,
+        cohortClosed: true,
+        cohortClosedAt: new Date(),
+        cohortCloseReason: 'VideoSDK webhook received but no summary webhook arrived before deadline',
         status: 'summary_timeout',
         terminalStatus: 'summary_timeout',
         closeReason: 'VideoSDK webhook received but no summary webhook arrived before deadline',
@@ -449,6 +485,43 @@ async function markOutboundJobSummaryTimeout(job) {
   );
 }
 
+async function markOutboundCohortClosed({ outboundJobId, sourceKey, refrensLeadId, reason }) {
+  if (!isMongoConfigured()) {
+    return null;
+  }
+
+  const collection = await getOutboundCallJobsCollection();
+  const now = new Date();
+  const query = isValidObjectId(outboundJobId)
+    ? { _id: toObjectId(outboundJobId) }
+    : {
+      sourceKey,
+      refrensLeadId,
+    };
+
+  if (!query._id && (!query.sourceKey || !query.refrensLeadId)) {
+    return null;
+  }
+
+  const result = await collection.findOneAndUpdate(
+    query,
+    {
+      $set: {
+        cohortClosed: true,
+        cohortClosedAt: now,
+        cohortCloseReason: reason || 'cohort completed',
+        updatedAt: now,
+      },
+    },
+    {
+      sort: { createdAt: -1 },
+      returnDocument: 'after',
+    },
+  );
+
+  return result?.value || result;
+}
+
 module.exports = {
   ACTIVE_JOB_STATUSES,
   TERMINAL_JOB_STATUSES,
@@ -456,6 +529,7 @@ module.exports = {
   createOutboundCallJob,
   createSkippedOutboundCallJob,
   findActiveJobForLead,
+  findClosedCohortJobForLead,
   findWebhookTimedOutJobs,
   markOutboundJobDispatched,
   markOutboundJobDispatchFailed,
@@ -464,5 +538,6 @@ module.exports = {
   markOutboundJobWebhookReceived,
   markOutboundJobWebhookTimeout,
   markOutboundJobSummaryTimeout,
+  markOutboundCohortClosed,
   requeueOutboundJobAfterWebhookTimeout,
 };

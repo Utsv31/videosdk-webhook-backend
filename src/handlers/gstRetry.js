@@ -117,6 +117,7 @@ function buildGstRetryDispatchPayload(parsed, nextAttempt) {
       originalCallId: parsed.callId,
       retryAttempt: nextAttempt,
       retryFlow: getRetryFlow(parsed).name,
+      sourceKey: parsed.sourceKey || '',
       name: parsed.customerName || '',
       business_name: parsed.businessName || '',
       age_of_business: parsed.ageOfBusiness || parsed.businessAge || '',

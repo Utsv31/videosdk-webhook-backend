@@ -51,6 +51,8 @@ function buildBaseParsed({ body, summary, customerData, roomData, agent }) {
     callerPhone: customerData.sipCallFrom || agent.getDefaultCallerPhone?.() || null,
     webhookUrl: customerData.webhook_url,
     routingRuleId: customerData.routingRuleId || customerData.routing_rule_id,
+    outboundJobId: customerData.outboundJobId || customerData.outbound_job_id,
+    sourceKey: customerData.sourceKey || customerData.source_key,
     retryAttempt: customerData.retryAttempt || customerData.retry_attempt,
     retryFlow: customerData.retryFlow || customerData.retry_flow,
     ageOfBusiness: customerData.age_of_business,

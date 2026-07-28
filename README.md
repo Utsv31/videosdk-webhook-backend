@@ -205,13 +205,14 @@ Ad hoc and GST calls are patch-only:
 
 GST patch behavior:
 
-- Always appends the VideoSDK summary as internal notes.
+- Appends the VideoSDK summary as an internal note.
+- Also appends `Demo requested: yes` when `demo_requested` is `yes`.
 - Always adds `Voice AI attempt` for every summary webhook that patches or creates a lead.
 - Adds `Identity Confirmed` when `is_right_business` is `yes`.
 - Does not check GST registration status from webhook fields.
-- Does not add requirement tags for `invoicing_and_billing` or `complete_accounting` for now; those fields remain visible in internal notes.
-- Adds `AI Demo Requested` when `demo_requested` is `yes`.
-- Adds `Sales Person callback` when `is_need_callback` is `yes`.
+- Does not add requirement tags for `invoicing_and_billing` or `complete_accounting` for now.
+- Adds `Sales Person Callback` when `is_need_callback` is `yes`.
+- Adds `Sales Person Callback` when `demo_requested` is `yes`; no separate demo tag is sent.
 
 GST stage movement:
 
@@ -219,6 +220,7 @@ GST stage movement:
 - `Sales Person Callback` -> `1.g AI Contact - Sales Person Callback`
 - `Identity Confirmed + Sales Person Callback` -> `1.g AI Contact - Sales Person Callback`
 - `Sales Person Callback + Identity Confirmed` -> `1.g AI Contact - Sales Person Callback`
+- `Demo requested` -> `1.g AI Contact - Sales Person Callback`
 - No identity/callback signal -> no pipeline or stage field is sent, so the lead stays in its existing LMS stage.
 
 GST agent id and default GST caller number are configured through env:
@@ -308,6 +310,16 @@ activeRetryJobId
 activeRetryJobStatus
 activeRetryAttempt
 activeRetryScheduledAtIst
+```
+
+The backend also blocks a new Metabase first-call for the same `sourceKey + refrensLeadId` if that same cohort was already completed or exhausted:
+
+```text
+reason: lead already completed or exhausted this cohort
+closedCohortJobId
+closedCohortStatus
+cohortCloseReason
+cohortClosedAt
 ```
 
 Terminal jobs are soft-closed with `active=false`, `terminalStatus`, `closeReason`, and `closedAt`, so they remain available for audit without blocking a future valid run:

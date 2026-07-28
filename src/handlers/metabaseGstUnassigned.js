@@ -8,6 +8,7 @@ const {
   createOutboundCallJob,
   createSkippedOutboundCallJob,
   findActiveJobForLead,
+  findClosedCohortJobForLead,
 } = require('../repositories/outboundCallJobs');
 const { findActiveRetryJobForLead } = require('../repositories/retryJobs');
 const { applyCallWindow } = require('../utils/businessHours');
@@ -115,6 +116,10 @@ function buildRunLeadResult({
   activeRetryJobStatus,
   activeRetryAttempt,
   activeRetryScheduledAtIst,
+  closedCohortJobId,
+  closedCohortStatus,
+  cohortCloseReason,
+  cohortClosedAt,
   scheduledWindow,
 }) {
   return {
@@ -133,6 +138,10 @@ function buildRunLeadResult({
     activeRetryJobStatus: activeRetryJobStatus || null,
     activeRetryAttempt: activeRetryAttempt || null,
     activeRetryScheduledAtIst: activeRetryScheduledAtIst || null,
+    closedCohortJobId: closedCohortJobId || null,
+    closedCohortStatus: closedCohortStatus || null,
+    cohortCloseReason: cohortCloseReason || null,
+    cohortClosedAt: cohortClosedAt || null,
     scheduledAt: scheduledWindow?.scheduledAt || null,
     scheduledAtIst: scheduledWindow?.scheduledAtIst || null,
   };
@@ -180,6 +189,24 @@ async function classifyLeadForGstCall({ sourceKey, lead }) {
       activeRetryJobStatus: activeRetryJob.status || null,
       activeRetryAttempt: activeRetryJob.retryAttempt || null,
       activeRetryScheduledAtIst: activeRetryJob.scheduledAtIst || null,
+      shouldCreateSkippedJob: false,
+    };
+  }
+
+  const closedCohortJob = await findClosedCohortJobForLead({
+    sourceKey,
+    refrensLeadId: lead.leadId,
+  });
+
+  if (closedCohortJob) {
+    return {
+      eligible: false,
+      reason: 'lead already completed or exhausted this cohort',
+      matchedSkipTags: [],
+      closedCohortJobId: closedCohortJob._id?.toString(),
+      closedCohortStatus: closedCohortJob.status || null,
+      cohortCloseReason: closedCohortJob.cohortCloseReason || closedCohortJob.closeReason || null,
+      cohortClosedAt: closedCohortJob.cohortClosedAt || closedCohortJob.closedAt || null,
       shouldCreateSkippedJob: false,
     };
   }
@@ -290,6 +317,10 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
           activeRetryJobStatus: classification.activeRetryJobStatus || null,
           activeRetryAttempt: classification.activeRetryAttempt || null,
           activeRetryScheduledAtIst: classification.activeRetryScheduledAtIst || null,
+          closedCohortJobId: classification.closedCohortJobId || null,
+          closedCohortStatus: classification.closedCohortStatus || null,
+          cohortCloseReason: classification.cohortCloseReason || null,
+          cohortClosedAt: classification.cohortClosedAt || null,
         });
         addRunLeadResult(buildRunLeadResult({
           lead,
@@ -303,6 +334,10 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
           activeRetryJobStatus: classification.activeRetryJobStatus || null,
           activeRetryAttempt: classification.activeRetryAttempt || null,
           activeRetryScheduledAtIst: classification.activeRetryScheduledAtIst || null,
+          closedCohortJobId: classification.closedCohortJobId || null,
+          closedCohortStatus: classification.closedCohortStatus || null,
+          cohortCloseReason: classification.cohortCloseReason || null,
+          cohortClosedAt: classification.cohortClosedAt || null,
         }));
         continue;
       }
