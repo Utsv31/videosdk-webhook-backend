@@ -252,6 +252,31 @@ async function markRetryJobFailed(jobId, error) {
   );
 }
 
+async function markRetryJobSkippedBeforeDispatch(jobId, { reason, matchedSkipTags, assignees, crmLead }) {
+  if (!jobId || !isMongoConfigured()) {
+    return;
+  }
+
+  const collection = await getRetryJobsCollection();
+  const now = new Date();
+  await collection.updateOne(
+    { _id: new ObjectId(jobId) },
+    {
+      $set: {
+        status: 'skipped_before_dispatch',
+        terminalStatus: 'skipped_before_dispatch',
+        closeReason: reason,
+        skippedAt: now,
+        completedAt: now,
+        matchedSkipTags: matchedSkipTags || [],
+        assignees: assignees || [],
+        crmLeadSnapshot: crmLead || null,
+        updatedAt: now,
+      },
+    },
+  );
+}
+
 async function markRetryJobRescheduled(jobId, { scheduledAt, scheduledAtIst, reason }) {
   if (!jobId || !isMongoConfigured()) {
     return;
@@ -310,5 +335,6 @@ module.exports = {
   markRetryJobSummaryTimeout,
   markRetryJobDispatched,
   markRetryJobFailed,
+  markRetryJobSkippedBeforeDispatch,
   markRetryJobRescheduled,
 };

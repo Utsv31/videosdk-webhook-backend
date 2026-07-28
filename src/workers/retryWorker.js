@@ -4,14 +4,30 @@ const {
   markRetryJobDispatched,
   markRetryJobFailed,
   markRetryJobRescheduled,
+  markRetryJobSkippedBeforeDispatch,
   markRetryJobSummaryTimeout,
 } = require('../repositories/retryJobs');
+const {
+  extractLeadAssignees,
+  extractLeadTagIds,
+  getLeadInCrm,
+  isLeadNotFoundError,
+} = require('../handlers/crm');
 const { dispatchSipCall, getVideoSdkAuthToken } = require('../services/videosdk');
 const { applyCallWindow, isWithinCallWindow } = require('../utils/businessHours');
 const logger = require('../utils/logger');
 
 const DEFAULT_RETRY_WORKER_INTERVAL_MS = 60 * 1000;
 const DEFAULT_RETRY_SUMMARY_TIMEOUT_MS = 6 * 60 * 1000;
+const GST_RETRY_BLOCKING_TAGS = new Set([
+  'ONQWVW1-utEzlg7E4tT3F',
+  'lhZNBczeoRecfbNQvTcHa',
+  'sM1iZbCixqm7Ldibszs2f',
+  'Sales Person Callback',
+  'Sales Person callback',
+  'GST Confirmed',
+  'Identity Confirmed',
+]);
 
 let retryWorkerTimer = null;
 let retryWorkerRunning = false;
@@ -36,6 +52,20 @@ async function handleRetryJobsMissingSummary() {
       dispatchedAt: job.dispatchedAt?.toISOString?.(),
     });
   }
+}
+
+async function getLiveRetryBlockers(job) {
+  const crmLead = await getLeadInCrm(job.refrensLeadId);
+  const tagIds = extractLeadTagIds(crmLead);
+  const matchedSkipTags = tagIds.filter((tagId) => GST_RETRY_BLOCKING_TAGS.has(tagId));
+  const assignees = extractLeadAssignees(crmLead);
+
+  return {
+    crmLead,
+    tagIds,
+    matchedSkipTags,
+    assignees,
+  };
 }
 
 async function processDueRetryJobs() {
@@ -72,6 +102,67 @@ async function processDueRetryJobs() {
             scheduledAt: nextWindow.scheduledAt,
             scheduledAtIst: nextWindow.scheduledAtIst,
             reason: 'call window closed before dispatch',
+          });
+          continue;
+        }
+
+        let liveBlockers;
+
+        try {
+          liveBlockers = await getLiveRetryBlockers(job);
+        } catch (error) {
+          if (isLeadNotFoundError(error)) {
+            await markRetryJobSkippedBeforeDispatch(job._id.toString(), {
+              reason: 'Refrens lead not found before retry dispatch',
+              matchedSkipTags: [],
+              assignees: [],
+              crmLead: {
+                leadId: job.refrensLeadId,
+                status: error.response?.status || null,
+                response: error.response?.data || null,
+              },
+            });
+            continue;
+          }
+
+          throw error;
+        }
+
+        if (liveBlockers.assignees.length > 0) {
+          await markRetryJobSkippedBeforeDispatch(job._id.toString(), {
+            reason: 'live Refrens lead assigned before retry dispatch',
+            matchedSkipTags: [],
+            assignees: liveBlockers.assignees,
+            crmLead: {
+              leadId: job.refrensLeadId,
+              assignees: liveBlockers.assignees,
+              tagIds: liveBlockers.tagIds,
+            },
+          });
+
+          logger.info('Retry call skipped because lead is assigned', {
+            retryJobId: job._id.toString(),
+            refrensLeadId: job.refrensLeadId,
+            assignees: liveBlockers.assignees,
+          });
+          continue;
+        }
+
+        if (liveBlockers.matchedSkipTags.length > 0) {
+          await markRetryJobSkippedBeforeDispatch(job._id.toString(), {
+            reason: 'live Refrens lead has GST blocking tag before retry dispatch',
+            matchedSkipTags: liveBlockers.matchedSkipTags,
+            assignees: [],
+            crmLead: {
+              leadId: job.refrensLeadId,
+              tagIds: liveBlockers.tagIds,
+            },
+          });
+
+          logger.info('Retry call skipped by live Refrens tag guard', {
+            retryJobId: job._id.toString(),
+            refrensLeadId: job.refrensLeadId,
+            matchedSkipTags: liveBlockers.matchedSkipTags,
           });
           continue;
         }

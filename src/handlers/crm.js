@@ -249,18 +249,78 @@ function collectTagIds(value) {
   return tagId ? [tagId] : [];
 }
 
-function extractLeadTagIds(leadResponse) {
-  const lead =
+function getLeadData(leadResponse) {
+  return (
     leadResponse?.data?.data ||
     leadResponse?.data?.lead ||
     leadResponse?.data ||
-    leadResponse;
+    leadResponse
+  );
+}
+
+function extractLeadTagIds(leadResponse) {
+  const lead = getLeadData(leadResponse);
 
   return uniqueValues([
     ...collectTagIds(lead?.tags),
     ...collectTagIds(lead?.privateFields?.vendor?.tags),
     ...collectTagIds(lead?.privateFields?.tags),
     ...collectTagIds(lead?.vendor?.tags),
+  ]);
+}
+
+function getAssigneeValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    return value.trim() || null;
+  }
+
+  if (typeof value !== 'object') {
+    return value || null;
+  }
+
+  return (
+    value.id ||
+    value._id ||
+    value.userId ||
+    value.user ||
+    value.email ||
+    value.name ||
+    null
+  );
+}
+
+function collectAssigneeValues(value) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectAssigneeValues(entry));
+  }
+
+  const assignee = getAssigneeValue(value);
+  return assignee ? [assignee] : [];
+}
+
+function extractLeadAssignees(leadResponse) {
+  const lead = getLeadData(leadResponse);
+
+  return uniqueValues([
+    ...collectAssigneeValues(lead?.assignedTo),
+    ...collectAssigneeValues(lead?.assignee),
+    ...collectAssigneeValues(lead?.owner),
+    ...collectAssigneeValues(lead?.salesPerson),
+    ...collectAssigneeValues(lead?.salesperson),
+    ...collectAssigneeValues(lead?.privateFields?.vendor?.assignedTo),
+    ...collectAssigneeValues(lead?.privateFields?.vendor?.assigned_to),
+    ...collectAssigneeValues(lead?.privateFields?.vendor?.assigned),
+    ...collectAssigneeValues(lead?.privateFields?.vendor?.assignedUser),
+    ...collectAssigneeValues(lead?.privateFields?.assignedTo),
+    ...collectAssigneeValues(lead?.vendor?.assignedTo),
   ]);
 }
 
@@ -512,6 +572,7 @@ module.exports = {
   buildPatchLeadPayload,
   buildGstPatchLeadPayload,
   extractLeadTagIds,
+  extractLeadAssignees,
   GST_PATCH_CONFIG,
   createLeadInCrm,
   getLeadInCrm,

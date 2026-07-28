@@ -445,6 +445,16 @@ terminalStatus: summary_timeout
 
 If `RETRY_CALL_SUMMARY_TIMEOUT_MS` is not configured, the backend uses `OUTBOUND_CALL_WEBHOOK_TIMEOUT_MS`.
 
+Before dispatching a scheduled retry, the retry worker performs a live Refrens `GET /leads/{leadId}` check. The retry is marked `skipped_before_dispatch` and no call is made if:
+
+```text
+lead is assigned to a user/salesperson
+lead has Sales Person Callback
+lead has GST Confirmed
+lead has Identity Confirmed
+lead no longer exists
+```
+
 The original webhook record in `call_events` also stores the retry decision under:
 
 ```text
