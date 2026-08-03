@@ -1,5 +1,7 @@
 const express = require('express');
 const { runGstUnassignedMetabaseImport } = require('../handlers/metabaseGstUnassigned');
+const { processDueRetryJobs } = require('../workers/retryWorker');
+const { processOutboundCallJobs } = require('../workers/outboundCallWorker');
 const { readSecret } = require('../utils/secrets');
 
 const router = express.Router();
@@ -40,6 +42,31 @@ router.post('/metabase/gst-unassigned/run', async (req, res, next) => {
     });
 
     return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/workers/tick', async (req, res, next) => {
+  if (!isAuthorized(req)) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+    });
+  }
+
+  try {
+    await processDueRetryJobs();
+    await processOutboundCallJobs();
+
+    return res.json({
+      success: true,
+      triggeredAt: new Date().toISOString(),
+      workers: [
+        'retry',
+        'outbound',
+      ],
+    });
   } catch (error) {
     return next(error);
   }

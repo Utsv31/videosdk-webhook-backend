@@ -267,6 +267,76 @@ curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/gst-una
   -d "{\"limit\": 3}"
 ```
 
+Manual worker tick:
+
+```bash
+curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/workers/tick \
+  -H "Content-Type: application/json" \
+  -H "x-jobs-api-token: <JOBS_API_TOKEN>" \
+  -d "{}"
+```
+
+This endpoint is protected by the same `JOBS_API_TOKEN` as the Metabase run endpoint. It immediately runs:
+
+```text
+retry worker
+outbound first-call worker
+```
+
+Use it when Render has gone idle and you want to wake the service and process due queued work without waiting for the next in-process worker interval.
+
+### Free-Tier Cron Setup
+
+Render Free web services can sleep after idle time, so do not rely only on in-process timers for scheduled calls. Use an external cron service such as cron-job.org, Pipedream, GitHub Actions, or a Render Cron Job to call these endpoints.
+
+Daily 9 AM IST wake-up:
+
+```text
+POST https://videosdk-webhook-backend.onrender.com/jobs/workers/tick
+Header: x-jobs-api-token: <JOBS_API_TOKEN>
+Body: {}
+```
+
+9 AM IST is `03:30 UTC`, so the UTC cron expression is:
+
+```text
+30 3 * * *
+```
+
+Daily 10 AM IST Metabase import:
+
+```text
+POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/gst-unassigned/run
+Header: x-jobs-api-token: <JOBS_API_TOKEN>
+Body: {}
+```
+
+10 AM IST is `04:30 UTC`, so the UTC cron expression is:
+
+```text
+30 4 * * *
+```
+
+Because the call window is 9 AM to 9 PM IST, leads imported at 10 AM are eligible to be called immediately. The Metabase import creates outbound call jobs, and the running outbound worker dispatches them one by one.
+
+Keep Render awake until 3 PM IST by scheduling this worker tick every 10 minutes:
+
+```text
+POST https://videosdk-webhook-backend.onrender.com/jobs/workers/tick
+Header: x-jobs-api-token: <JOBS_API_TOKEN>
+Body: {}
+```
+
+If your cron provider supports the `Asia/Kolkata` timezone, schedule every 10 minutes from `09:00` to `15:00`. This covers the 10 AM first-call run plus the standard and callback retry windows with buffer.
+
+If your cron provider only supports UTC, `09:00-15:00 IST` is `03:30-09:30 UTC`. A simple safe UTC expression is:
+
+```text
+*/10 3-9 * * *
+```
+
+This may ping a little before 9 AM IST and after 3 PM IST, but calls are still protected by the backend's 9 AM to 9 PM IST call-window guard. If you only schedule the 10 AM import, later retries may wait until the next webhook, health check, or manual request wakes the Render service.
+
 Rows are normalized into:
 
 ```text
