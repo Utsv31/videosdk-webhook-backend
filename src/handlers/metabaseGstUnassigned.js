@@ -35,12 +35,112 @@ const GST_FIRST_CALL_BLOCKING_TAGS = new Set([
   'Identity Confirmed',
 ]);
 
+const PHONE_FIELD_CANDIDATES = [
+  'phone',
+  'Phone',
+  'contactPhone',
+  'contact_phone',
+  'clientPhone',
+  'client_phone',
+  'mobile',
+  'Mobile',
+  'phoneNumber',
+  'phone_number',
+  'contact.phone',
+  'ref.contact.phone',
+  'ref.contact.mobile',
+];
+
 function getQuestionId() {
   return process.env.METABASE_GST_UNASSIGNED_QUESTION_ID || DEFAULT_GST_UNASSIGNED_QUESTION_ID;
 }
 
 function normalizePhone(phone) {
-  return typeof phone === 'string' ? phone.trim() : '';
+  if (typeof phone === 'string') {
+    return phone.trim();
+  }
+
+  if (typeof phone === 'number' || typeof phone === 'bigint') {
+    return String(phone).trim();
+  }
+
+  if (Array.isArray(phone)) {
+    for (const value of phone) {
+      const normalized = normalizePhone(value);
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  if (phone && typeof phone === 'object') {
+    return normalizePhone(
+      phone.phone ||
+      phone.mobile ||
+      phone.value ||
+      phone.number ||
+      phone.raw ||
+      phone.text ||
+      '',
+    );
+  }
+
+  return '';
+}
+
+function getPathValue(row, path) {
+  if (!row || !path) {
+    return undefined;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(row, path)) {
+    return row[path];
+  }
+
+  return path.split('.').reduce((current, key) => {
+    if (!current || typeof current !== 'object') {
+      return undefined;
+    }
+
+    return current[key];
+  }, row);
+}
+
+function normalizeFieldName(fieldName) {
+  return String(fieldName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function extractPhone(row) {
+  for (const field of PHONE_FIELD_CANDIDATES) {
+    const phone = normalizePhone(getPathValue(row, field));
+
+    if (phone) {
+      return {
+        phone,
+        phoneSource: field,
+      };
+    }
+  }
+
+  const fallback = Object.entries(row || {}).find(([key, value]) => {
+    const normalizedKey = normalizeFieldName(key);
+    return (
+      (normalizedKey.includes('phone') || normalizedKey.includes('mobile')) &&
+      Boolean(normalizePhone(value))
+    );
+  });
+
+  if (fallback) {
+    return {
+      phone: normalizePhone(fallback[1]),
+      phoneSource: fallback[0],
+    };
+  }
+
+  return {
+    phone: '',
+    phoneSource: null,
+  };
 }
 
 function normalizeLeadId(value) {
@@ -85,12 +185,15 @@ function normalizeTags(tags) {
 }
 
 function normalizeLeadRow(row) {
+  const phone = extractPhone(row);
+
   return {
     leadId: normalizeLeadId(row._id || row.id || row.leadId),
     createdAt: row.createdAt || null,
     name: row.clientName || row.name || '',
     businessName: row.companyName || row.businessName || '',
-    phone: normalizePhone(row.phone),
+    phone: phone.phone,
+    phoneSource: phone.phoneSource,
     email: row.email || '',
     subject: row.subject || '',
     status: row.status || '',
@@ -125,6 +228,7 @@ function buildRunLeadResult({
   return {
     leadId: lead.leadId || null,
     phone: lead.phone || '',
+    phoneSource: lead.phoneSource || null,
     name: lead.name || '',
     businessName: lead.businessName || '',
     stage: lead.stage || '',

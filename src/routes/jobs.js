@@ -3,6 +3,7 @@ const { runGstUnassignedMetabaseImport } = require('../handlers/metabaseGstUnass
 const { processDueRetryJobs } = require('../workers/retryWorker');
 const { processOutboundCallJobs } = require('../workers/outboundCallWorker');
 const { readSecret } = require('../utils/secrets');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -47,7 +48,12 @@ router.post('/metabase/gst-unassigned/run', async (req, res, next) => {
   }
 });
 
-router.post('/workers/tick', async (req, res, next) => {
+async function runWorkerTick() {
+  await processDueRetryJobs();
+  await processOutboundCallJobs();
+}
+
+router.post('/workers/tick', async (req, res) => {
   if (!isAuthorized(req)) {
     return res.status(401).json({
       success: false,
@@ -55,21 +61,18 @@ router.post('/workers/tick', async (req, res, next) => {
     });
   }
 
-  try {
-    await processDueRetryJobs();
-    await processOutboundCallJobs();
-
-    return res.json({
-      success: true,
-      triggeredAt: new Date().toISOString(),
-      workers: [
-        'retry',
-        'outbound',
-      ],
+  setImmediate(() => {
+    runWorkerTick().catch((error) => {
+      logger.error('Manual worker tick failed', {
+        message: error.message,
+        stack: error.stack,
+      });
     });
-  } catch (error) {
-    return next(error);
-  }
+  });
+
+  return res.json({
+    success: true,
+  });
 });
 
 module.exports = router;

@@ -276,7 +276,7 @@ curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/workers/tick \
   -d "{}"
 ```
 
-This endpoint is protected by the same `JOBS_API_TOKEN` as the Metabase run endpoint. It immediately runs:
+This endpoint is protected by the same `JOBS_API_TOKEN` as the Metabase run endpoint. It returns a small success response immediately, then runs these workers in the background:
 
 ```text
 retry worker
@@ -284,6 +284,12 @@ outbound first-call worker
 ```
 
 Use it when Render has gone idle and you want to wake the service and process due queued work without waiting for the next in-process worker interval.
+
+Expected response:
+
+```json
+{"success":true}
+```
 
 ### Free-Tier Cron Setup
 
