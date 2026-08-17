@@ -7,7 +7,7 @@ const {
 
 const GST_AGENT_TYPE = 'gst';
 const DEFAULT_GST_AGENT_ID = 'ag_n8irvh';
-const DEFAULT_GST_SIP_CALL_FROM = '+918035017510';
+const DEFAULT_GST_SIP_CALL_FROM = '+918031151693';
 
 function getAgentIds() {
   return getConfiguredIds('GST_AGENT_ID', DEFAULT_GST_AGENT_ID);

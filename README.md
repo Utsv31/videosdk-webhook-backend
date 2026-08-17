@@ -57,7 +57,7 @@ REFRENS_BUSINESS_SLUG=crm-lead-create
 REFRENS_DEFAULT_PIPELINE=Sales Pipeline
 REFRENS_DEFAULT_STAGE=Contacted
 GST_AGENT_ID=ag_n8irvh
-GST_SIP_CALL_FROM=+918035017510
+GST_SIP_CALL_FROM=+918031151693
 GST_ROUTING_RULE_ID=rr_fogwqz
 ADHOC_AGENT_ID=ag_l901ju
 VIDEOSDK_AUTH_TOKEN_FILE=/etc/secrets/videosdk_auth_token
@@ -227,7 +227,7 @@ GST agent id and default GST caller number are configured through env:
 
 ```env
 GST_AGENT_ID=ag_n8irvh
-GST_SIP_CALL_FROM=+918035017510
+GST_SIP_CALL_FROM=+918031151693
 GST_ROUTING_RULE_ID=rr_fogwqz
 ```
 

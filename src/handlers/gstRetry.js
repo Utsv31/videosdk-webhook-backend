@@ -2,7 +2,7 @@ const { cancelPendingRetryJobsForLead, createRetryJob } = require('../repositori
 const { applyCallWindow } = require('../utils/businessHours');
 const logger = require('../utils/logger');
 
-const DEFAULT_GST_SIP_CALL_FROM = '+918035017510';
+const DEFAULT_GST_SIP_CALL_FROM = '+918031151693';
 const DEFAULT_GST_ROUTING_RULE_ID = 'rr_fogwqz';
 const MAX_GST_TOTAL_ATTEMPTS = 3;
 const GST_STANDARD_RETRY_DELAYS_MS = {
