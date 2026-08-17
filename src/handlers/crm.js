@@ -6,7 +6,7 @@ const { readSecret, requireSecret } = require('../utils/secrets');
 const GST_PATCH_CONFIG = {
   tags: {
     voiceAiAttempt: 'Voice AI attempt',
-    identityConfirmed: 'Identity Confirmed',
+    identityConfirmed: 'Identity confirmed',
     salesCallback: 'Sales Person Callback',
   },
   stages: {

@@ -33,6 +33,7 @@ const GST_FIRST_CALL_BLOCKING_TAGS = new Set([
   'Sales Person callback',
   'GST Confirmed',
   'Identity Confirmed',
+  'Identity confirmed',
 ]);
 
 const PHONE_FIELD_CANDIDATES = [

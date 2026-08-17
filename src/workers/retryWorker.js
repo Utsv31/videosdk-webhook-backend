@@ -27,6 +27,7 @@ const GST_RETRY_BLOCKING_TAGS = new Set([
   'Sales Person callback',
   'GST Confirmed',
   'Identity Confirmed',
+  'Identity confirmed',
 ]);
 
 let retryWorkerTimer = null;
