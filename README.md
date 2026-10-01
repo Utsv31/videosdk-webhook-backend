@@ -290,6 +290,15 @@ curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/problem
   -d "{\"limit\": 1}"
 ```
 
+Problem-leads single lead test:
+
+```bash
+curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/problem-leads/run \
+  -H "Content-Type: application/json" \
+  -H "x-jobs-api-token: <JOBS_API_TOKEN>" \
+  -d "{\"leadId\":\"6a0811f7e6df7f0031c97298\",\"limit\":1}"
+```
+
 Manual worker tick:
 
 ```bash

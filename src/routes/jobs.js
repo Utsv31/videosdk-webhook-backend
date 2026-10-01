@@ -44,6 +44,8 @@ router.post('/metabase/gst-unassigned/run', async (req, res, next) => {
       requestedBy: req.ip,
       limit: Number.isInteger(limit) && limit > 0 ? limit : null,
       parameters: req.body?.parameters || {},
+      leadId: req.body?.leadId,
+      leadIds: req.body?.leadIds,
     });
 
     return res.json(result);
@@ -66,6 +68,8 @@ router.post('/metabase/problem-leads/run', async (req, res, next) => {
       requestedBy: req.ip,
       limit: Number.isInteger(limit) && limit > 0 ? limit : null,
       parameters: req.body?.parameters || {},
+      leadId: req.body?.leadId,
+      leadIds: req.body?.leadIds,
     });
 
     return res.json(result);

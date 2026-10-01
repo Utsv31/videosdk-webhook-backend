@@ -229,6 +229,17 @@ function getMaxRunLeadResults() {
   return Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_MAX_RUN_LEAD_RESULTS;
 }
 
+function normalizeTargetLeadIds({ leadId, leadIds } = {}) {
+  return new Set(
+    [
+      leadId,
+      ...(Array.isArray(leadIds) ? leadIds : []),
+    ]
+      .map(normalizeLeadId)
+      .filter(Boolean),
+  );
+}
+
 function buildRunLeadResult({
   lead,
   status,
@@ -381,19 +392,30 @@ async function runMetabaseLeadImport({
   blockingTags,
   blockingReason,
   outboundConfig,
+  leadId,
+  leadIds,
 } = {}) {
+  const targetLeadIds = normalizeTargetLeadIds({ leadId, leadIds });
   const run = await createMetabaseRun({
     sourceKey,
     questionId,
     requestedBy,
-    parameters,
+    parameters: {
+      ...(parameters || {}),
+      ...(targetLeadIds.size > 0 ? { targetLeadIds: [...targetLeadIds] } : {}),
+    },
   });
   const runId = run?._id?.toString();
 
   try {
     const result = await fetchQuestionRows(questionId, parameters || {});
-    const rows = Number.isInteger(limit) && limit > 0 ? result.rows.slice(0, limit) : result.rows;
+    const filteredRows = targetLeadIds.size > 0
+      ? result.rows.filter((row) => targetLeadIds.has(normalizeLeadRow(row).leadId))
+      : result.rows;
+    const rows = Number.isInteger(limit) && limit > 0 ? filteredRows.slice(0, limit) : filteredRows;
     const stats = {
+      sourceFetchedCount: result.rows.length,
+      targetLeadIds: [...targetLeadIds],
       fetchedCount: rows.length,
       eligibleCount: 0,
       skippedCount: 0,
@@ -550,11 +572,19 @@ async function runMetabaseLeadImport({
   }
 }
 
-async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters } = {}) {
+async function runGstUnassignedMetabaseImport({
+  requestedBy,
+  limit,
+  parameters,
+  leadId,
+  leadIds,
+} = {}) {
   return runMetabaseLeadImport({
     requestedBy,
     limit,
     parameters,
+    leadId,
+    leadIds,
     sourceKey: GST_UNASSIGNED_SOURCE_KEY,
     questionId: getQuestionId(),
     label: 'GST unassigned',
@@ -566,11 +596,19 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
   });
 }
 
-async function runProblemLeadsOutreachMetabaseImport({ requestedBy, limit, parameters } = {}) {
+async function runProblemLeadsOutreachMetabaseImport({
+  requestedBy,
+  limit,
+  parameters,
+  leadId,
+  leadIds,
+} = {}) {
   return runMetabaseLeadImport({
     requestedBy,
     limit,
     parameters,
+    leadId,
+    leadIds,
     sourceKey: PROBLEM_LEADS_OUTREACH_SOURCE_KEY,
     questionId: getProblemLeadsOutreachQuestionId(),
     label: 'Problem leads outreach',
