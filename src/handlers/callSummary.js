@@ -12,7 +12,12 @@ const {
   markLeadFailed,
   markRetryDecision,
 } = require('../repositories/callEvents');
-const { scheduleGstRetryIfNeeded } = require('./gstRetry');
+const {
+  DEFAULT_PROBLEM_LEADS_CAMPAIGN,
+  DEFAULT_PROBLEM_LEADS_SOURCE_KEY,
+  scheduleGstRetryIfNeeded,
+  scheduleProblemLeadsRetryIfNeeded,
+} = require('./gstRetry');
 const { markRetryJobSummaryReceived } = require('../repositories/retryJobs');
 const { markOutboundCohortClosed } = require('../repositories/outboundCallJobs');
 const { adhoc, gst, parsePayload } = require('../agents');
@@ -64,6 +69,16 @@ function isPositiveCall(parsed) {
   );
 }
 
+function isProblemLeadsOutreach(parsed) {
+  return (
+    parsed.agentType === AGENT_TYPES.ADHOC &&
+    (
+      parsed.campaign === DEFAULT_PROBLEM_LEADS_CAMPAIGN ||
+      parsed.sourceKey === DEFAULT_PROBLEM_LEADS_SOURCE_KEY
+    )
+  );
+}
+
 async function processCallSummary(body, options = {}) {
   const parsed = parseCallSummary(body);
   const isPatchOnlyAgent = PATCH_ONLY_AGENT_TYPES.has(parsed.agentType);
@@ -90,7 +105,7 @@ async function processCallSummary(body, options = {}) {
   let retryDecisionHandled = false;
 
   async function handleRetryDecision() {
-    if (parsed.agentType !== AGENT_TYPES.GST) {
+    if (parsed.agentType !== AGENT_TYPES.GST && !isProblemLeadsOutreach(parsed)) {
       return null;
     }
 
@@ -99,7 +114,9 @@ async function processCallSummary(body, options = {}) {
     }
 
     retryDecisionHandled = true;
-    const retryDecision = await scheduleGstRetryIfNeeded(eventId, parsed);
+    const retryDecision = parsed.agentType === AGENT_TYPES.GST
+      ? await scheduleGstRetryIfNeeded(eventId, parsed)
+      : await scheduleProblemLeadsRetryIfNeeded(eventId, parsed);
     await markRetryDecision(eventId, retryDecision);
 
     if (retryDecision && retryDecision.shouldRetry !== true) {

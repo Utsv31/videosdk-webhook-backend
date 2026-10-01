@@ -7,6 +7,10 @@ const {
   PROBLEM_LEADS_OUTREACH_CONFIG,
 } = require('../src/handlers/crm');
 const { buildOutboundDispatchPayload } = require('../src/workers/outboundCallWorker');
+const {
+  DEFAULT_PROBLEM_LEADS_CAMPAIGN,
+  getProblemLeadsRetryDecision,
+} = require('../src/handlers/gstRetry');
 
 function problemLeadsOutreach(overrides = {}) {
   return {
@@ -135,4 +139,59 @@ test('GST outbound job keeps GST routing defaults', () => {
   assert.equal(payload.metadata.agentType, 'gst');
   assert.equal(Object.hasOwn(payload.metadata, 'campaign'), false);
   assert.equal(payload.routingRuleId, process.env.GST_ROUTING_RULE_ID || 'rr_fogwqz');
+});
+
+test('problem-leads no-answer summary schedules standard retry attempt 2', () => {
+  const decision = getProblemLeadsRetryDecision(problemLeadsOutreach({
+    callOutcome: 'No Answer',
+    refrensLeadId: '6a0811f7e6df7f0031c97298',
+    phone: '+919999999999',
+    webhookUrl: 'https://example.com/webhook',
+    sourceKey: 'problem_leads_outreach',
+  }));
+
+  assert.equal(decision.shouldRetry, true);
+  assert.equal(decision.nextAttempt, 2);
+  assert.equal(decision.retryFlow, 'standard');
+  assert.equal(decision.delayMs, 2 * 60 * 1000);
+  assert.equal(decision.dispatchPayload.metadata.campaign, DEFAULT_PROBLEM_LEADS_CAMPAIGN);
+  assert.equal(decision.dispatchPayload.metadata.retryAttempt, 2);
+});
+
+test('problem-leads retry attempt 2 schedules final standard retry attempt 3', () => {
+  const decision = getProblemLeadsRetryDecision(problemLeadsOutreach({
+    callOutcome: 'Call Not Picked',
+    retryAttempt: 2,
+    refrensLeadId: '6a0811f7e6df7f0031c97298',
+    phone: '+919999999999',
+    webhookUrl: 'https://example.com/webhook',
+    sourceKey: 'problem_leads_outreach',
+  }));
+
+  assert.equal(decision.shouldRetry, true);
+  assert.equal(decision.nextAttempt, 3);
+  assert.equal(decision.retryFlow, 'standard');
+  assert.equal(decision.delayMs, 60 * 60 * 1000);
+});
+
+test('problem-leads positive or callback signals stop retries', () => {
+  const base = {
+    refrensLeadId: '6a0811f7e6df7f0031c97298',
+    phone: '+919999999999',
+    webhookUrl: 'https://example.com/webhook',
+    sourceKey: 'problem_leads_outreach',
+  };
+
+  const positive = getProblemLeadsRetryDecision(problemLeadsOutreach({
+    ...base,
+    callOutcome: 'Interested',
+  }));
+  const callback = getProblemLeadsRetryDecision(problemLeadsOutreach({
+    ...base,
+    callOutcome: 'No Answer',
+    isNeedCallback: 'yes',
+  }));
+
+  assert.equal(positive.shouldRetry, false);
+  assert.equal(callback.shouldRetry, false);
 });

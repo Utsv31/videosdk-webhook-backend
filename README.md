@@ -659,7 +659,11 @@ The `Reach_Out_Problem_Leads` campaign has its own routing and does not change G
 - No separate `Reopened from Rejected` tag is sent; reopening is tracked by stage movement only.
 - Calls that are not picked, or otherwise have no positive signal, do not include pipeline or stage fields and remain at their current stage.
 - The CRM PATCH does not include owner or assignee fields, so the existing salesperson assignment is preserved.
-- Ad hoc calls are excluded from the GST retry scheduler. The reopened behavior is controlled by stage movement only, not by a special tag.
+- Problem-leads calls use the same total-attempt retry model as GST: original call + 2 retries.
+- Retryable problem-leads outcomes are `No Answer`, `Call Not Picked`, `voicemail`, `busy`, and `failed`.
+- Retry 1 is scheduled after 2 minutes. Retry 2 is scheduled after 1 hour.
+- Positive, identity-confirmed, callback-needed, or demo-requested summaries stop further AI retries.
+- The reopened behavior is controlled by stage movement only, not by a special tag.
 
 ## Vercel deployment
 

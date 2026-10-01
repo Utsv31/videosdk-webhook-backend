@@ -53,7 +53,7 @@ async function createRetryJob({
         refrensLeadId: parsed.refrensLeadId || null,
         agentType: parsed.agentType,
         agentId: parsed.agentId || null,
-        previousCallStatus: parsed.gstCallStatus || null,
+        previousCallStatus: parsed.gstCallStatus || parsed.callOutcome || null,
         retryAttempt: nextAttempt,
         retryFlow: retryFlow || null,
         reason,
