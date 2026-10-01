@@ -18,6 +18,8 @@ const DEFAULT_OUTBOUND_WORKER_INTERVAL_MS = 2000;
 const DEFAULT_WEBHOOK_TIMEOUT_MS = 6 * 60 * 1000;
 const DEFAULT_GST_SIP_CALL_FROM = '+918031151693';
 const DEFAULT_GST_ROUTING_RULE_ID = 'rr_fogwqz';
+const DEFAULT_PROBLEM_LEADS_CAMPAIGN = 'Reach_Out_Problem_Leads';
+const PROBLEM_LEADS_OUTREACH_SOURCE_KEY = 'problem_leads_outreach';
 const GST_FIRST_CALL_BLOCKING_TAGS = new Set([
   'ONQWVW1-utEzlg7E4tT3F',
   'lhZNBczeoRecfbNQvTcHa',
@@ -36,23 +38,64 @@ function getWebhookTimeoutMs() {
   return Number.parseInt(process.env.OUTBOUND_CALL_WEBHOOK_TIMEOUT_MS, 10) || DEFAULT_WEBHOOK_TIMEOUT_MS;
 }
 
-function buildOutboundDispatchPayload(job) {
+function getSourceDispatchConfig(job) {
+  if (job.sourceKey === PROBLEM_LEADS_OUTREACH_SOURCE_KEY) {
+    return {
+      sipCallFrom: (
+        job.sipCallFrom ||
+        process.env.PROBLEM_LEADS_SIP_CALL_FROM ||
+        process.env.ADHOC_SIP_CALL_FROM ||
+        process.env.GST_SIP_CALL_FROM ||
+        DEFAULT_GST_SIP_CALL_FROM
+      ),
+      routingRuleId: (
+        job.routingRuleId ||
+        process.env.PROBLEM_LEADS_ROUTING_RULE_ID ||
+        process.env.ADHOC_ROUTING_RULE_ID ||
+        process.env.GST_ROUTING_RULE_ID ||
+        DEFAULT_GST_ROUTING_RULE_ID
+      ),
+      campaign: job.campaign || DEFAULT_PROBLEM_LEADS_CAMPAIGN,
+      agentType: job.agentType || 'adhoc',
+    };
+  }
+
   return {
-    sipCallFrom: process.env.GST_SIP_CALL_FROM || DEFAULT_GST_SIP_CALL_FROM,
+    sipCallFrom: job.sipCallFrom || process.env.GST_SIP_CALL_FROM || DEFAULT_GST_SIP_CALL_FROM,
+    routingRuleId: job.routingRuleId || process.env.GST_ROUTING_RULE_ID || DEFAULT_GST_ROUTING_RULE_ID,
+    campaign: job.campaign || null,
+    agentType: job.agentType || 'gst',
+  };
+}
+
+function buildOutboundDispatchPayload(job) {
+  const dispatchConfig = getSourceDispatchConfig(job);
+  const metadata = {
+    refrensLeadId: job.refrensLeadId,
+    outboundJobId: job._id.toString(),
+    source: 'metabase',
+    sourceKey: job.sourceKey,
+    metabaseQuestionId: job.questionId,
+    name: job.name || '',
+    business_name: job.businessName || '',
+    email: job.email || '',
+    previous_stage: job.stage || '',
+    webhook_url: process.env.VIDEOSDK_WEBHOOK_URL,
+  };
+
+  if (dispatchConfig.agentType) {
+    metadata.agentType = dispatchConfig.agentType;
+  }
+
+  if (dispatchConfig.campaign) {
+    metadata.campaign = dispatchConfig.campaign;
+  }
+
+  return {
+    sipCallFrom: dispatchConfig.sipCallFrom,
     sipCallTo: job.phone,
-    routingRuleId: process.env.GST_ROUTING_RULE_ID || DEFAULT_GST_ROUTING_RULE_ID,
-    metadata: {
-      refrensLeadId: job.refrensLeadId,
-      outboundJobId: job._id.toString(),
-      source: 'metabase',
-      sourceKey: job.sourceKey,
-      metabaseQuestionId: job.questionId,
-      name: job.name || '',
-      business_name: job.businessName || '',
-      email: job.email || '',
-      previous_stage: job.stage || '',
-      webhook_url: process.env.VIDEOSDK_WEBHOOK_URL,
-    },
+    routingRuleId: dispatchConfig.routingRuleId,
+    metadata,
   };
 }
 

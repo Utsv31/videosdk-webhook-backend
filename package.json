@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "check": "node --check src/index.js && node --check src/routes/webhook.js && node --check src/routes/jobs.js && node --check src/agents/common.js && node --check src/agents/gst.js && node --check src/agents/adhoc.js && node --check src/agents/index.js && node --check src/handlers/callSummary.js && node --check src/handlers/crm.js && node --check src/handlers/gstRetry.js && node --check src/handlers/metabaseGstUnassigned.js && node --check src/services/metabase.js && node --check src/services/mongo.js && node --check src/services/videosdk.js && node --check src/repositories/callEvents.js && node --check src/repositories/metabaseRuns.js && node --check src/repositories/outboundCallJobs.js && node --check src/repositories/retryJobs.js && node --check src/workers/outboundCallWorker.js && node --check src/workers/retryWorker.js && node --check src/utils/businessHours.js && node --check src/utils/logger.js && node --check src/utils/secrets.js && node --check src/utils/validateWebhook.js && node --check scripts/testMongoConnection.js",
+    "test": "node --test test/*.test.js",
+    "check": "node --check api/index.js && node --check src/app.js && node --check src/index.js && node --check src/routes/webhook.js && node --check src/routes/jobs.js && node --check src/agents/common.js && node --check src/agents/gst.js && node --check src/agents/adhoc.js && node --check src/agents/index.js && node --check src/handlers/callSummary.js && node --check src/handlers/crm.js && node --check src/handlers/gstRetry.js && node --check src/handlers/metabaseGstUnassigned.js && node --check src/services/metabase.js && node --check src/services/mongo.js && node --check src/services/videosdk.js && node --check src/repositories/callEvents.js && node --check src/repositories/metabaseRuns.js && node --check src/repositories/outboundCallJobs.js && node --check src/repositories/retryJobs.js && node --check src/workers/outboundCallWorker.js && node --check src/workers/retryWorker.js && node --check src/utils/businessHours.js && node --check src/utils/deferTask.js && node --check src/utils/logger.js && node --check src/utils/secrets.js && node --check src/utils/validateWebhook.js && node --check scripts/testMongoConnection.js",
     "test:mongo": "node scripts/testMongoConnection.js"
   },
   "keywords": [
@@ -19,6 +20,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@vercel/functions": "^3.9.9",
     "axios": "^1.6.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",

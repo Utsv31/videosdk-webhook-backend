@@ -15,6 +15,11 @@ const GST_PATCH_CONFIG = {
   },
 };
 
+const PROBLEM_LEADS_OUTREACH_CONFIG = {
+  campaign: 'Reach_Out_Problem_Leads',
+  stage: '1.i Reopened from Rejected',
+};
+
 let cachedRefrensToken = null;
 let cachedRefrensTokenExpiresAt = 0;
 
@@ -211,6 +216,10 @@ function isAdhocPositiveSignal(parsed) {
   );
 }
 
+function isProblemLeadsOutreachCall(parsed) {
+  return parsed.campaign === PROBLEM_LEADS_OUTREACH_CONFIG.campaign;
+}
+
 function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -377,6 +386,28 @@ function buildGstPatchLeadPayload(parsed) {
   return payload;
 }
 
+function buildProblemLeadsOutreachPatchLeadPayload(parsed) {
+  const pipeline = process.env.REFRENS_DEFAULT_PIPELINE || 'Sales Pipeline';
+  const noteEntries = buildInternalNoteEntries(parsed);
+  const shouldReopen = isAdhocPositiveSignal(parsed);
+  const tagsAdd = buildGstTags(parsed);
+  const payload = { tagsAdd };
+
+  if (shouldReopen) {
+    payload.pipeline = pipeline;
+    payload.stage = PROBLEM_LEADS_OUTREACH_CONFIG.stage;
+  }
+
+  if (noteEntries.length) {
+    payload.addInternalNotes = {
+      body: noteEntries,
+      clientRequestId: buildClientRequestId(parsed),
+    };
+  }
+
+  return payload;
+}
+
 function buildCreateLeadPayload(parsed) {
   const fallbackName = `VideoSDK Lead ${parsed.callId || parsed.meetingId || 'Unknown'}`;
   const customerName = parsed.customerName || fallbackName;
@@ -406,6 +437,10 @@ function buildCreateLeadPayload(parsed) {
 function buildPatchLeadPayload(parsed) {
   if (parsed.agentType === 'gst') {
     return buildGstPatchLeadPayload(parsed);
+  }
+
+  if (isProblemLeadsOutreachCall(parsed)) {
+    return buildProblemLeadsOutreachPatchLeadPayload(parsed);
   }
 
   const pipeline = process.env.REFRENS_DEFAULT_PIPELINE || 'Sales Pipeline';
@@ -571,9 +606,11 @@ module.exports = {
   buildCreateLeadPayload,
   buildPatchLeadPayload,
   buildGstPatchLeadPayload,
+  buildProblemLeadsOutreachPatchLeadPayload,
   extractLeadTagIds,
   extractLeadAssignees,
   GST_PATCH_CONFIG,
+  PROBLEM_LEADS_OUTREACH_CONFIG,
   createLeadInCrm,
   getLeadInCrm,
   patchLeadInCrm,

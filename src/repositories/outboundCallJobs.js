@@ -66,6 +66,7 @@ async function createOutboundCallJob({
   scheduledAt,
   scheduledAtIst,
   businessHoursAdjusted,
+  outboundConfig,
 }) {
   if (!isMongoConfigured()) {
     return null;
@@ -79,6 +80,10 @@ async function createOutboundCallJob({
     runId: runId ? toObjectId(runId) : null,
     sourceKey,
     questionId,
+    agentType: outboundConfig?.agentType || null,
+    campaign: outboundConfig?.campaign || null,
+    sipCallFrom: outboundConfig?.sipCallFrom || null,
+    routingRuleId: outboundConfig?.routingRuleId || null,
     refrensLeadId: lead.leadId,
     name: lead.name || '',
     businessName: lead.businessName || '',
@@ -139,6 +144,7 @@ async function createSkippedOutboundCallJob({
   rawRow,
   skipReason,
   matchedSkipTags,
+  outboundConfig,
 }) {
   if (!isMongoConfigured()) {
     return null;
@@ -151,6 +157,10 @@ async function createSkippedOutboundCallJob({
     runId: runId ? toObjectId(runId) : null,
     sourceKey,
     questionId,
+    agentType: outboundConfig?.agentType || null,
+    campaign: outboundConfig?.campaign || null,
+    sipCallFrom: outboundConfig?.sipCallFrom || null,
+    routingRuleId: outboundConfig?.routingRuleId || null,
     refrensLeadId: lead.leadId || null,
     name: lead.name || '',
     businessName: lead.businessName || '',

@@ -1,8 +1,12 @@
-const { buildBaseParsed, getConfiguredIds } = require('./common');
+const {
+  buildBaseParsed,
+  getConfiguredIds,
+  normalizeYesNo,
+} = require('./common');
 
 const ADHOC_AGENT_TYPE = 'adhoc';
 const DEFAULT_ADHOC_AGENT_ID = 'ag_l901ju';
-const LOST_REJECTED_RECOVERY = 'Lost_Rejected_Recovery';
+const REACH_OUT_PROBLEM_LEADS = 'Reach_Out_Problem_Leads';
 
 function getAgentIds() {
   return getConfiguredIds('ADHOC_AGENT_ID', DEFAULT_ADHOC_AGENT_ID);
@@ -11,10 +15,10 @@ function getAgentIds() {
 function matches({ summary, customerData, roomData }) {
   return Boolean(
     roomData.agentId && getAgentIds().has(roomData.agentId),
-  ) || (customerData.campaign || summary.campaign) === LOST_REJECTED_RECOVERY;
+  ) || (customerData.campaign || summary.campaign) === REACH_OUT_PROBLEM_LEADS;
 }
 
-function parseLostRejectedRecovery(context) {
+function parseReachOutProblemLeads(context) {
   const { summary } = context;
 
   return {
@@ -27,6 +31,17 @@ function parseLostRejectedRecovery(context) {
     offerIntroduced: summary.offer_introduced,
     offerInterest: summary.offer_interest,
     salesCallbackRequired: summary.sales_callback_required === true,
+    isRightBusiness: normalizeYesNo(
+      summary.is_right_business ||
+      summary.identity_confirmed ||
+      summary.right_business,
+    ),
+    isNeedCallback: normalizeYesNo(
+      summary.is_need_callback ||
+      summary.is_callback_needed ||
+      summary.sales_callback_required,
+    ),
+    demoRequested: normalizeYesNo(summary.demo_requested),
     callbackTime: summary.callback_time,
     customerSentiment: summary.customer_sentiment,
     originalObjection: summary.original_objection,
@@ -41,19 +56,19 @@ function parseLostRejectedRecovery(context) {
 function parse(context) {
   const campaign = context.customerData.campaign || context.summary.campaign;
 
-  if (campaign === LOST_REJECTED_RECOVERY) {
-    return parseLostRejectedRecovery(context);
+  if (campaign === REACH_OUT_PROBLEM_LEADS) {
+    return parseReachOutProblemLeads(context);
   }
 
   return {
-    ...parseLostRejectedRecovery(context),
+    ...parseReachOutProblemLeads(context),
     campaign,
   };
 }
 
 module.exports = {
   DEFAULT_ADHOC_AGENT_ID,
-  LOST_REJECTED_RECOVERY,
+  REACH_OUT_PROBLEM_LEADS,
   getAgentIds,
   matches,
   parse,

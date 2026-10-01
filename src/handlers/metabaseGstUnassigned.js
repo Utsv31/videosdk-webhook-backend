@@ -15,7 +15,9 @@ const { applyCallWindow } = require('../utils/businessHours');
 const logger = require('../utils/logger');
 
 const GST_UNASSIGNED_SOURCE_KEY = 'gst_unassigned_leads';
+const PROBLEM_LEADS_OUTREACH_SOURCE_KEY = 'problem_leads_outreach';
 const DEFAULT_GST_UNASSIGNED_QUESTION_ID = '4645';
+const DEFAULT_PROBLEM_LEADS_OUTREACH_QUESTION_ID = '4906';
 const DEFAULT_MAX_RUN_LEAD_RESULTS = 1000;
 
 const GST_TAG_IDS = {
@@ -26,6 +28,17 @@ const GST_TAG_IDS = {
 };
 
 const GST_FIRST_CALL_BLOCKING_TAGS = new Set([
+  GST_TAG_IDS.salesPersonCallback,
+  GST_TAG_IDS.gstConfirmed,
+  GST_TAG_IDS.identityConfirmed,
+  'Sales Person Callback',
+  'Sales Person callback',
+  'GST Confirmed',
+  'Identity Confirmed',
+  'Identity confirmed',
+]);
+
+const PROBLEM_LEADS_OUTREACH_BLOCKING_TAGS = new Set([
   GST_TAG_IDS.salesPersonCallback,
   GST_TAG_IDS.gstConfirmed,
   GST_TAG_IDS.identityConfirmed,
@@ -54,6 +67,14 @@ const PHONE_FIELD_CANDIDATES = [
 
 function getQuestionId() {
   return process.env.METABASE_GST_UNASSIGNED_QUESTION_ID || DEFAULT_GST_UNASSIGNED_QUESTION_ID;
+}
+
+function getProblemLeadsOutreachQuestionId() {
+  return (
+    process.env.METABASE_PROBLEM_LEADS_OUTREACH_QUESTION_ID ||
+    process.env.METABASE_PROBLEM_LEADS_QUESTION_ID ||
+    DEFAULT_PROBLEM_LEADS_OUTREACH_QUESTION_ID
+  );
 }
 
 function normalizePhone(phone) {
@@ -252,13 +273,13 @@ function buildRunLeadResult({
   };
 }
 
-function getBlockingTags(lead) {
+function getBlockingTags(lead, blockingTags = GST_FIRST_CALL_BLOCKING_TAGS) {
   return lead.tags
-    .filter((tag) => tag.id && GST_FIRST_CALL_BLOCKING_TAGS.has(tag.id))
+    .filter((tag) => tag.id && blockingTags.has(tag.id))
     .map((tag) => tag.id);
 }
 
-async function classifyLeadForGstCall({ sourceKey, lead }) {
+async function classifyLeadForMetabaseCall({ sourceKey, lead, blockingTags, blockingReason }) {
   if (!lead.leadId) {
     return {
       eligible: false,
@@ -324,12 +345,12 @@ async function classifyLeadForGstCall({ sourceKey, lead }) {
     };
   }
 
-  const matchedSkipTags = getBlockingTags(lead);
+  const matchedSkipTags = getBlockingTags(lead, blockingTags);
 
   if (matchedSkipTags.length > 0) {
     return {
       eligible: false,
-      reason: 'lead already has GST blocking tag',
+      reason: blockingReason || 'lead already has blocking tag',
       matchedSkipTags,
     };
   }
@@ -341,10 +362,28 @@ async function classifyLeadForGstCall({ sourceKey, lead }) {
   };
 }
 
-async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters } = {}) {
-  const questionId = getQuestionId();
+async function classifyLeadForGstCall({ sourceKey, lead }) {
+  return classifyLeadForMetabaseCall({
+    sourceKey,
+    lead,
+    blockingTags: GST_FIRST_CALL_BLOCKING_TAGS,
+    blockingReason: 'lead already has GST blocking tag',
+  });
+}
+
+async function runMetabaseLeadImport({
+  requestedBy,
+  limit,
+  parameters,
+  sourceKey,
+  questionId,
+  label,
+  blockingTags,
+  blockingReason,
+  outboundConfig,
+} = {}) {
   const run = await createMetabaseRun({
-    sourceKey: GST_UNASSIGNED_SOURCE_KEY,
+    sourceKey,
     questionId,
     requestedBy,
     parameters,
@@ -391,9 +430,11 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
 
     for (const row of rows) {
       const lead = normalizeLeadRow(row);
-      const classification = await classifyLeadForGstCall({
-        sourceKey: GST_UNASSIGNED_SOURCE_KEY,
+      const classification = await classifyLeadForMetabaseCall({
+        sourceKey,
         lead,
+        blockingTags,
+        blockingReason,
       });
 
       if (!classification.eligible) {
@@ -402,12 +443,13 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
           ? null
           : await createSkippedOutboundCallJob({
             runId,
-            sourceKey: GST_UNASSIGNED_SOURCE_KEY,
+            sourceKey,
             questionId,
             lead,
             rawRow: row,
             skipReason: classification.reason,
             matchedSkipTags: classification.matchedSkipTags,
+            outboundConfig,
           });
 
         jobs.push({
@@ -450,13 +492,14 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
       const scheduledWindow = applyCallWindow(new Date());
       const job = await createOutboundCallJob({
         runId,
-        sourceKey: GST_UNASSIGNED_SOURCE_KEY,
+        sourceKey,
         questionId,
         lead,
         rawRow: row,
         scheduledAt: scheduledWindow.scheduledAt,
         scheduledAtIst: scheduledWindow.scheduledAtIst,
         businessHoursAdjusted: scheduledWindow.adjusted,
+        outboundConfig,
       });
 
       stats.eligibleCount += 1;
@@ -478,7 +521,7 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
 
     await markMetabaseRunCompleted(runId, stats);
 
-    logger.info('GST Metabase unassigned run completed', {
+    logger.info(`${label} Metabase run completed`, {
       runId,
       questionId,
       ...stats,
@@ -487,7 +530,7 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
     return {
       success: true,
       runId,
-      sourceKey: GST_UNASSIGNED_SOURCE_KEY,
+      sourceKey,
       questionId,
       ...stats,
       jobs,
@@ -495,7 +538,7 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
   } catch (error) {
     await markMetabaseRunFailed(runId, error);
 
-    logger.error('GST Metabase unassigned run failed', {
+    logger.error(`${label} Metabase run failed`, {
       runId,
       questionId,
       message: error.message,
@@ -507,12 +550,51 @@ async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters }
   }
 }
 
+async function runGstUnassignedMetabaseImport({ requestedBy, limit, parameters } = {}) {
+  return runMetabaseLeadImport({
+    requestedBy,
+    limit,
+    parameters,
+    sourceKey: GST_UNASSIGNED_SOURCE_KEY,
+    questionId: getQuestionId(),
+    label: 'GST unassigned',
+    blockingTags: GST_FIRST_CALL_BLOCKING_TAGS,
+    blockingReason: 'lead already has GST blocking tag',
+    outboundConfig: {
+      agentType: 'gst',
+    },
+  });
+}
+
+async function runProblemLeadsOutreachMetabaseImport({ requestedBy, limit, parameters } = {}) {
+  return runMetabaseLeadImport({
+    requestedBy,
+    limit,
+    parameters,
+    sourceKey: PROBLEM_LEADS_OUTREACH_SOURCE_KEY,
+    questionId: getProblemLeadsOutreachQuestionId(),
+    label: 'Problem leads outreach',
+    blockingTags: PROBLEM_LEADS_OUTREACH_BLOCKING_TAGS,
+    blockingReason: 'lead already has problem-leads blocking tag',
+    outboundConfig: {
+      agentType: 'adhoc',
+      campaign: 'Reach_Out_Problem_Leads',
+    },
+  });
+}
+
 module.exports = {
   GST_FIRST_CALL_BLOCKING_TAGS,
   GST_TAG_IDS,
   GST_UNASSIGNED_SOURCE_KEY,
+  PROBLEM_LEADS_OUTREACH_BLOCKING_TAGS,
+  PROBLEM_LEADS_OUTREACH_SOURCE_KEY,
   classifyLeadForGstCall,
+  classifyLeadForMetabaseCall,
   getQuestionId,
+  getProblemLeadsOutreachQuestionId,
   normalizeLeadRow,
   runGstUnassignedMetabaseImport,
+  runMetabaseLeadImport,
+  runProblemLeadsOutreachMetabaseImport,
 };

@@ -12,6 +12,7 @@ const {
 } = require('../repositories/callEvents');
 const { markOutboundJobWebhookReceived } = require('../repositories/outboundCallJobs');
 const validateWebhook = require('../utils/validateWebhook');
+const deferTask = require('../utils/deferTask');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -35,7 +36,7 @@ router.post('/', (req, res) => {
     received: true,
   });
 
-  setImmediate(async () => {
+  deferTask(async () => {
     let eventRecord = null;
     let eventId = null;
 

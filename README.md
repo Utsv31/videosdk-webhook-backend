@@ -60,6 +60,10 @@ GST_AGENT_ID=ag_n8irvh
 GST_SIP_CALL_FROM=+918031151693
 GST_ROUTING_RULE_ID=rr_fogwqz
 ADHOC_AGENT_ID=ag_l901ju
+ADHOC_SIP_CALL_FROM=+918031151693
+ADHOC_ROUTING_RULE_ID=rr_3zadcx
+PROBLEM_LEADS_SIP_CALL_FROM=+918031151693
+PROBLEM_LEADS_ROUTING_RULE_ID=rr_3zadcx
 VIDEOSDK_AUTH_TOKEN_FILE=/etc/secrets/videosdk_auth_token
 VIDEOSDK_API_BASE_URL=https://api.videosdk.live
 VIDEOSDK_WEBHOOK_URL=https://videosdk-webhook-backend.onrender.com/webhook
@@ -74,6 +78,7 @@ CALL_WINDOW_END_HOUR_IST=21
 METABASE_URL=https://metabase-proded4fa3ab.azurewebsites.net
 METABASE_API_KEY_FILE=/etc/secrets/metabase_api_key
 METABASE_GST_UNASSIGNED_QUESTION_ID=4645
+METABASE_PROBLEM_LEADS_OUTREACH_QUESTION_ID=4906
 JOBS_API_TOKEN_FILE=/etc/secrets/jobs_api_token
 MONGODB_URI_FILE=/etc/secrets/mongodb_uri
 MONGODB_DB_NAME=videosdk_crm
@@ -188,7 +193,7 @@ Summary webhook parsing is routed through `src/agents`.
 
 - GST agent: detected by `GST_AGENT_ID`.
 - Ad hoc agent: detected by `ADHOC_AGENT_ID`.
-- Ad hoc campaign parser currently supports `Lost_Rejected_Recovery`.
+- Ad hoc campaign parser currently supports `Reach_Out_Problem_Leads`.
 
 To add another dynamic campaign, add a parser in `src/agents/adhoc.js` and route by `metadata.campaign` / `summary.campaign`. To add another agent, add a new module under `src/agents` and register it in `src/agents/index.js`.
 
@@ -258,6 +263,15 @@ curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/gst-una
   -d "{}"
 ```
 
+Start the never-reached/problem-leads cohort:
+
+```bash
+curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/problem-leads/run \
+  -H "Content-Type: application/json" \
+  -H "x-jobs-api-token: <JOBS_API_TOKEN>" \
+  -d "{}"
+```
+
 Optional test limit:
 
 ```bash
@@ -265,6 +279,15 @@ curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/gst-una
   -H "Content-Type: application/json" \
   -H "x-jobs-api-token: <JOBS_API_TOKEN>" \
   -d "{\"limit\": 3}"
+```
+
+Problem-leads test limit:
+
+```bash
+curl -X POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/problem-leads/run \
+  -H "Content-Type: application/json" \
+  -H "x-jobs-api-token: <JOBS_API_TOKEN>" \
+  -d "{\"limit\": 1}"
 ```
 
 Manual worker tick:
@@ -313,6 +336,14 @@ Daily 10 AM IST Metabase import:
 
 ```text
 POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/gst-unassigned/run
+Header: x-jobs-api-token: <JOBS_API_TOKEN>
+Body: {}
+```
+
+For the problem-leads cohort, use this URL instead:
+
+```text
+POST https://videosdk-webhook-backend.onrender.com/jobs/metabase/problem-leads/run
 Header: x-jobs-api-token: <JOBS_API_TOKEN>
 Body: {}
 ```
@@ -459,6 +490,7 @@ Useful Mongo filters:
 
 ```js
 { sourceKey: "gst_unassigned_leads" }
+{ sourceKey: "problem_leads_outreach" }
 { refrensLeadId: "lead_id_here" }
 { active: true }
 { status: "skipped" }
@@ -601,6 +633,34 @@ PATCH {REFRENS_API_BASE_URL}/api/v1/businesses/{REFRENS_BUSINESS_SLUG}/leads/{le
 PATCH appends only the VideoSDK summary text as an internal note using `addInternalNotes` with a stable `clientRequestId`.
 
 Ad hoc PATCH moves the lead to `REFRENS_DEFAULT_STAGE` only when the summary has a positive ad hoc signal such as `Interested`, `Callback Requested`, `Need Time`, `offer_interest=Interested`, or `sales_callback_required=true`. Without a positive signal, no pipeline or stage field is sent, so the lead stays in its existing LMS stage.
+
+### Reach out problem leads routing
+
+The `Reach_Out_Problem_Leads` campaign has its own routing and does not change GST or generic ad hoc behavior:
+
+- Metabase intake endpoint: `POST /jobs/metabase/problem-leads/run`.
+- Source key: `problem_leads_outreach`.
+- Question id env: `METABASE_PROBLEM_LEADS_OUTREACH_QUESTION_ID`.
+- VideoSDK dispatch env: `PROBLEM_LEADS_SIP_CALL_FROM` and `PROBLEM_LEADS_ROUTING_RULE_ID`.
+- Dispatch metadata includes `campaign: Reach_Out_Problem_Leads`, so the summary webhook enters this campaign parser.
+- Any positive outcome (`Interested`, `Callback Requested`, `Need Time`, `offer_interest=Interested`, or `sales_callback_required=true`) moves the existing lead to `1.i Reopened from Rejected`.
+- Every patched lead receives the normal `Voice AI attempt` tag.
+- If `is_right_business` / `identity_confirmed` is `yes`, the lead also receives `Identity confirmed`.
+- If `is_need_callback`, `sales_callback_required`, or `demo_requested` is `yes`, the lead also receives `Sales Person Callback`.
+- No separate `Reopened from Rejected` tag is sent; reopening is tracked by stage movement only.
+- Calls that are not picked, or otherwise have no positive signal, do not include pipeline or stage fields and remain at their current stage.
+- The CRM PATCH does not include owner or assignee fields, so the existing salesperson assignment is preserved.
+- Ad hoc calls are excluded from the GST retry scheduler. The reopened behavior is controlled by stage movement only, not by a special tag.
+
+## Vercel deployment
+
+The repository supports both the existing long-running Node deployment and Vercel Functions:
+
+- `src/index.js` starts the HTTP server and interval workers for a long-running host.
+- `api/index.js` exports the Express application as a Vercel Function.
+- Webhook and manual worker tasks use Vercel `waitUntil()` so work can finish after the HTTP response is sent.
+- Interval workers do not start inside Vercel. Continue invoking `POST /jobs/workers/tick` from an external scheduler, or configure a sufficiently frequent Vercel Cron on a Pro/Enterprise plan.
+- Copy the same backend environment variables and secrets into the Vercel project before deployment.
 
 PATCH does not update `details`; call summaries are kept as internal notes on existing leads. New lead creation still writes summary content into `details` because create does not support internal notes.
 
