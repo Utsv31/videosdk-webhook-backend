@@ -220,6 +220,15 @@ function isProblemLeadsOutreachCall(parsed) {
   return parsed.campaign === PROBLEM_LEADS_OUTREACH_CONFIG.campaign;
 }
 
+function isProblemLeadsPositiveSignal(parsed) {
+  return Boolean(
+    isAdhocPositiveSignal(parsed) ||
+    isYes(parsed.isRightBusiness) ||
+    isYes(parsed.isNeedCallback) ||
+    isYes(parsed.demoRequested)
+  );
+}
+
 function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -389,7 +398,7 @@ function buildGstPatchLeadPayload(parsed) {
 function buildProblemLeadsOutreachPatchLeadPayload(parsed) {
   const pipeline = process.env.REFRENS_DEFAULT_PIPELINE || 'Sales Pipeline';
   const noteEntries = buildInternalNoteEntries(parsed);
-  const shouldReopen = isAdhocPositiveSignal(parsed);
+  const shouldReopen = isProblemLeadsPositiveSignal(parsed);
   const tagsAdd = buildGstTags(parsed);
   const payload = { tagsAdd };
 
@@ -435,12 +444,12 @@ function buildCreateLeadPayload(parsed) {
 }
 
 function buildPatchLeadPayload(parsed) {
-  if (parsed.agentType === 'gst') {
-    return buildGstPatchLeadPayload(parsed);
-  }
-
   if (isProblemLeadsOutreachCall(parsed)) {
     return buildProblemLeadsOutreachPatchLeadPayload(parsed);
+  }
+
+  if (parsed.agentType === 'gst') {
+    return buildGstPatchLeadPayload(parsed);
   }
 
   const pipeline = process.env.REFRENS_DEFAULT_PIPELINE || 'Sales Pipeline';

@@ -63,6 +63,37 @@ test('problem-leads outreach adds normal identity and callback tags without reop
   ]);
 });
 
+test('problem-leads identity-only signal moves to reopened rejected stage', () => {
+  const payload = buildPatchLeadPayload(problemLeadsOutreach({
+    callOutcome: 'No Answer',
+    isRightBusiness: 'yes',
+  }));
+
+  assert.equal(payload.stage, PROBLEM_LEADS_OUTREACH_CONFIG.stage);
+  assert.deepEqual(payload.tagsAdd, [
+    'Voice AI attempt',
+    'Identity confirmed',
+  ]);
+});
+
+test('problem-leads campaign overrides GST identity stage routing', () => {
+  const payload = buildPatchLeadPayload({
+    agentType: 'gst',
+    campaign: PROBLEM_LEADS_OUTREACH_CONFIG.campaign,
+    callId: 'call-problem-gst-shaped',
+    callOutcome: 'No Answer',
+    isRightBusiness: 'yes',
+    isNeedCallback: 'no',
+  });
+
+  assert.equal(payload.stage, PROBLEM_LEADS_OUTREACH_CONFIG.stage);
+  assert.notEqual(payload.stage, GST_PATCH_CONFIG.stages.identityConfirmed);
+  assert.deepEqual(payload.tagsAdd, [
+    'Voice AI attempt',
+    'Identity confirmed',
+  ]);
+});
+
 test('problem-leads outreach adds callback tag for demo requested', () => {
   const payload = buildPatchLeadPayload(problemLeadsOutreach({
     callOutcome: 'Interested',

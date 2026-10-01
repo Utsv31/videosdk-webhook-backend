@@ -16,6 +16,10 @@ function getPayloadParts(body) {
 }
 
 function getAgentForPayload(context) {
+  if (adhoc.matches(context)) {
+    return adhoc;
+  }
+
   const byAgentId = agents.find((agent) => (
     context.roomData.agentId && agent.getAgentIds?.().has(context.roomData.agentId)
   ));
