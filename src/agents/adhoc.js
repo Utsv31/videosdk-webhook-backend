@@ -1,6 +1,7 @@
 const {
   buildBaseParsed,
   getConfiguredIds,
+  normalizeEnumValue,
   normalizeYesNo,
 } = require('./common');
 
@@ -27,6 +28,7 @@ function parseReachOutProblemLeads(context) {
       agent: module.exports,
     }),
     callOutcome: summary.call_outcome,
+    callStatus: normalizeEnumValue(summary.call_status),
     interestLevel: summary.interest_level,
     offerIntroduced: summary.offer_introduced,
     offerInterest: summary.offer_interest,

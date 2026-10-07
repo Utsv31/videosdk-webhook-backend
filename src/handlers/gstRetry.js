@@ -286,19 +286,20 @@ function getProblemLeadsRetryDecision(parsed) {
     };
   }
 
-  const outcome = normalizeOutcome(parsed.callOutcome);
+  const outcomeSource = parsed.callOutcome || parsed.callStatus || parsed.gstCallStatus;
+  const outcome = normalizeOutcome(outcomeSource);
 
   if (!PROBLEM_LEADS_RETRYABLE_OUTCOMES.has(outcome)) {
     return {
       shouldRetry: false,
-      reason: `non-retryable problem leads call outcome: ${parsed.callOutcome || 'missing'}`,
+      reason: `non-retryable problem leads call outcome: ${outcomeSource || 'missing'}`,
     };
   }
 
   return buildRetryDecision(parsed, getRetryFlow(parsed), {
     maxAttempts: MAX_GST_TOTAL_ATTEMPTS,
     dispatchPayloadBuilder: buildProblemLeadsRetryDispatchPayload,
-    statusLabel: parsed.callOutcome || outcome || 'unknown',
+    statusLabel: outcomeSource || outcome || 'unknown',
   });
 }
 

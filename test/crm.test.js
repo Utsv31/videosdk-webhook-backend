@@ -189,6 +189,23 @@ test('problem-leads no-answer summary schedules standard retry attempt 2', () =>
   assert.equal(decision.dispatchPayload.metadata.retryAttempt, 2);
 });
 
+test('problem-leads summary falls back to call_status for retry decision', () => {
+  const decision = getProblemLeadsRetryDecision(problemLeadsOutreach({
+    callOutcome: '',
+    callStatus: 'call_not_picked',
+    refrensLeadId: '6a0811f7e6df7f0031c97298',
+    phone: '+919999999999',
+    webhookUrl: 'https://example.com/webhook',
+    sourceKey: 'problem_leads_outreach',
+  }));
+
+  assert.equal(decision.shouldRetry, true);
+  assert.equal(decision.nextAttempt, 2);
+  assert.equal(decision.retryFlow, 'standard');
+  assert.equal(decision.delayMs, 2 * 60 * 1000);
+  assert.match(decision.reason, /call_not_picked/);
+});
+
 test('problem-leads retry attempt 2 schedules final standard retry attempt 3', () => {
   const decision = getProblemLeadsRetryDecision(problemLeadsOutreach({
     callOutcome: 'Call Not Picked',
