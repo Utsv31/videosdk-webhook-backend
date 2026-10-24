@@ -1,0 +1,7 @@
+simulation: cohort-retries
+routing: path
+mocks:
+  - routeKey: refrens
+    path: ../mocks/refrens/config.yaml
+  - routeKey: videosdk
+    path: ../mocks/videosdk/config.yaml

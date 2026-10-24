@@ -15,6 +15,7 @@ app.use(express.json({
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
+    revision: process.env.RENDER_GIT_COMMIT || null,
     timestamp: new Date().toISOString(),
   });
 });

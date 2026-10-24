@@ -106,9 +106,9 @@ function getGstRoutingRuleId(parsed) {
 
 function getProblemLeadsRoutingRuleId(parsed) {
   return (
+    parsed.routingRuleId ||
     process.env.PROBLEM_LEADS_ROUTING_RULE_ID ||
     process.env.ADHOC_ROUTING_RULE_ID ||
-    parsed.routingRuleId ||
     DEFAULT_PROBLEM_LEADS_ROUTING_RULE_ID
   );
 }
@@ -153,6 +153,7 @@ function buildGstRetryDispatchPayload(parsed, nextAttempt) {
     routingRuleId: getGstRoutingRuleId(parsed),
     metadata: {
       refrensLeadId: parsed.refrensLeadId,
+      outboundJobId: parsed.outboundJobId || '',
       originalCallId: parsed.callId,
       retryAttempt: nextAttempt,
       retryFlow: getRetryFlow(parsed).name,
@@ -169,11 +170,13 @@ function buildProblemLeadsRetryDispatchPayload(parsed, nextAttempt) {
   const webhookUrl = getWebhookUrl(parsed);
 
   return {
-    sipCallFrom: getProblemLeadsSipCallFrom(),
+    sipCallFrom: parsed.callerPhone || getProblemLeadsSipCallFrom(),
     sipCallTo: parsed.phone,
     routingRuleId: getProblemLeadsRoutingRuleId(parsed),
     metadata: {
       refrensLeadId: parsed.refrensLeadId,
+      outboundJobId: parsed.outboundJobId || '',
+      routingRuleId: getProblemLeadsRoutingRuleId(parsed),
       originalCallId: parsed.callId,
       retryAttempt: nextAttempt,
       retryFlow: getRetryFlow(parsed).name,

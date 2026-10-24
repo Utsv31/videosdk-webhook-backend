@@ -1,0 +1,4 @@
+version: 1
+name: Refrens retry policy fixture
+interceptRequests: true
+mockSrc: default.js

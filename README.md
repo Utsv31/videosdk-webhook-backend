@@ -772,3 +772,21 @@ This keeps webhook retries from creating duplicate database records for the same
 - Refrens API calls are wrapped in `try/catch`.
 - Incoming webhook payloads and CRM API results are logged with timestamp and `callId`.
 - Logs are written to stdout and `logs/app.log`.
+
+## Assignment Policy and Retry Recovery
+
+- `gst_unassigned_leads`: a live CRM assignee blocks both initial calls and retries.
+- `problem_leads_outreach` (Never Able): assigned leads can receive initial calls and retries. Live blocking tags still stop dispatch.
+- Never Able positive responses keep the normal identity/callback tags and move to `1.i Reopened from Rejected`. No positive signal means no stage change.
+- Retry metadata preserves the originating outbound job and the selected SIP route so final retries remain in the same cohort and call history.
+- `/health` includes `revision` from `RENDER_GIT_COMMIT` to verify a deployment before recovering jobs.
+
+For a reviewed run with retries skipped only because the lead was assigned, use the recovery script. It defaults to a dry run:
+
+```sh
+node scripts/recoverAssignedProblemLeadRetries.js --run-id <runId> --expected-count <count>
+```
+
+Add `--apply --expected-revision <deployedCommit> --audit-file <privateLocalPath>` after deploying the fix. The script verifies the live revision, refuses conflicting retries or newer call summaries, and writes a backup before migrating the existing retry and outbound records in a transaction. It preserves retry attempt 2 and does not create another first call. Existing historical call events and the original Metabase run remain unchanged.
+
+The Postman fixtures under `postman/` model the existing Refrens GET and VideoSDK dispatch response shapes. To verify initial and retry assignment/tag guards without placing real calls, start the simulation on port 4905 and run `node scripts/verifyCohortRetrySimulation.js` with `MONGODB_URI` supplied. It uses a new isolated test database, points both HTTP dependencies at localhost, and removes its synthetic records after verification.

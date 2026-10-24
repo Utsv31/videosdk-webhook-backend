@@ -15,6 +15,7 @@ const {
 } = require('../handlers/crm');
 const { dispatchSipCall, getVideoSdkAuthToken } = require('../services/videosdk');
 const { applyCallWindow, isWithinCallWindow } = require('../utils/businessHours');
+const { allowsAssignedCalls, getRetrySourceKey } = require('../utils/cohortPolicy');
 const logger = require('../utils/logger');
 
 const DEFAULT_RETRY_WORKER_INTERVAL_MS = 60 * 1000;
@@ -129,7 +130,7 @@ async function processDueRetryJobs() {
           throw error;
         }
 
-        if (liveBlockers.assignees.length > 0) {
+        if (liveBlockers.assignees.length > 0 && !allowsAssignedCalls(getRetrySourceKey(job))) {
           await markRetryJobSkippedBeforeDispatch(job._id.toString(), {
             reason: 'live Refrens lead assigned before retry dispatch',
             matchedSkipTags: [],
@@ -170,6 +171,7 @@ async function processDueRetryJobs() {
 
         const result = await dispatchSipCall(job.dispatchPayload);
         await markRetryJobDispatched(job._id.toString(), result);
+        await new Promise((resolve) => setTimeout(resolve, 1100));
       } catch (error) {
         await markRetryJobFailed(job._id.toString(), error);
       }

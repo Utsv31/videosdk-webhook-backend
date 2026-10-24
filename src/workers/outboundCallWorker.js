@@ -9,9 +9,10 @@ const {
   markOutboundJobWebhookTimeout,
   requeueOutboundJobAfterWebhookTimeout,
 } = require('../repositories/outboundCallJobs');
-const { extractLeadTagIds, getLeadInCrm, isLeadNotFoundError } = require('../handlers/crm');
+const { extractLeadAssignees, extractLeadTagIds, getLeadInCrm, isLeadNotFoundError } = require('../handlers/crm');
 const { dispatchSipCall, getVideoSdkAuthToken } = require('../services/videosdk');
 const { applyCallWindow, isWithinCallWindow } = require('../utils/businessHours');
+const { allowsAssignedCalls } = require('../utils/cohortPolicy');
 const logger = require('../utils/logger');
 
 const DEFAULT_OUTBOUND_WORKER_INTERVAL_MS = 2000;
@@ -75,6 +76,7 @@ function buildOutboundDispatchPayload(job) {
     outboundJobId: job._id.toString(),
     source: 'metabase',
     sourceKey: job.sourceKey,
+    routingRuleId: dispatchConfig.routingRuleId,
     metabaseQuestionId: job.questionId,
     name: job.name || '',
     business_name: job.businessName || '',
@@ -103,11 +105,13 @@ async function getLiveBlockingTags(job) {
   const crmLead = await getLeadInCrm(job.refrensLeadId);
   const tagIds = extractLeadTagIds(crmLead);
   const matchedSkipTags = tagIds.filter((tagId) => GST_FIRST_CALL_BLOCKING_TAGS.has(tagId));
+  const assignees = extractLeadAssignees(crmLead);
 
   return {
     crmLead,
     tagIds,
     matchedSkipTags,
+    assignees,
   };
 }
 
@@ -218,6 +222,19 @@ async function processOutboundCallJobs() {
           status: error.response?.status,
           response: error.response?.data,
           message: error.message,
+        });
+        return;
+      }
+
+      if (liveTagCheck.assignees.length > 0 && !allowsAssignedCalls(job.sourceKey)) {
+        await markOutboundJobSkippedBeforeDispatch(job._id.toString(), {
+          reason: 'live Refrens lead assigned before outbound dispatch',
+          matchedSkipTags: [],
+          crmLead: {
+            leadId: job.refrensLeadId,
+            assignees: liveTagCheck.assignees,
+            tagIds: liveTagCheck.tagIds,
+          },
         });
         return;
       }
