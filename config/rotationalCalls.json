@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "consentConfirmed": false,
+  "dailyLimitMode": "per_recipient",
+  "dailyCalls": 5,
+  "startHourIst": 9,
+  "endHourIst": 21,
+  "minimumGapMinutes": 5,
+  "recipients": [],
+  "callerRoutes": [],
+  "metadata": {}
+}

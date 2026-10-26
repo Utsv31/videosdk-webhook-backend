@@ -2,6 +2,10 @@
 
 Node.js/Express backend for listening to VideoSDK call webhooks and updating existing Refrens CRM leads from call summaries.
 
+The separate [four-number rotational calling workflow](docs/rotational-calls.md)
+supports five daily test calls per recipient, two SIP routes, Mongo scheduling,
+preview/status/stop endpoints, and no CRM or cohort-retry side effects.
+
 AiSensy/WhatsApp is intentionally disabled for now. The current flow focuses only on webhook listening and Refrens CRM lead creation.
 
 ## Flow

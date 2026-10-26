@@ -1,0 +1,5 @@
+simulation: rotation
+routing: path
+mocks:
+  - routeKey: videosdk
+    path: ../mocks/rotation-videosdk/config.yaml

@@ -3,6 +3,7 @@ require('dotenv').config();
 const app = require('./app');
 const { startRetryWorker } = require('./workers/retryWorker');
 const { startOutboundCallWorker } = require('./workers/outboundCallWorker');
+const { startRotationWorker } = require('./workers/rotationWorker');
 const logger = require('./utils/logger');
 
 const port = process.env.PORT || 3000;
@@ -15,4 +16,5 @@ app.listen(port, () => {
 
   startRetryWorker();
   startOutboundCallWorker();
+  startRotationWorker();
 });

@@ -1,5 +1,6 @@
 node_modules/
 .env
+rotational_calls.json
 logs/
 npm-debug.log*
 yarn-debug.log*

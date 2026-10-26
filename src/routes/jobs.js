@@ -5,11 +5,13 @@ const {
 } = require('../handlers/metabaseGstUnassigned');
 const { processDueRetryJobs } = require('../workers/retryWorker');
 const { processOutboundCallJobs } = require('../workers/outboundCallWorker');
+const { processRotationCallJobs } = require('../workers/rotationWorker');
 const { readSecret } = require('../utils/secrets');
 const deferTask = require('../utils/deferTask');
 const logger = require('../utils/logger');
 
 const router = express.Router();
+router.use('/rotation', require('./rotation'));
 
 function isAuthorized(req) {
   const token = readSecret('JOBS_API_TOKEN', {
@@ -81,6 +83,7 @@ router.post('/metabase/problem-leads/run', async (req, res, next) => {
 async function runWorkerTick() {
   await processDueRetryJobs();
   await processOutboundCallJobs();
+  await processRotationCallJobs();
 }
 
 router.post('/workers/tick', async (req, res) => {

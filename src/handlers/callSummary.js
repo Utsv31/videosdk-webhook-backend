@@ -23,6 +23,7 @@ const { markOutboundCohortClosed } = require('../repositories/outboundCallJobs')
 const { adhoc, gst, parsePayload } = require('../agents');
 const { normalizeRefrensLeadId } = require('../agents/common');
 const logger = require('../utils/logger');
+const { getRotationContext } = require('../utils/rotationPlan');
 
 const AGENT_TYPES = {
   ADHOC: adhoc.type,
@@ -80,6 +81,10 @@ function isProblemLeadsOutreach(parsed) {
 }
 
 async function processCallSummary(body, options = {}) {
+  if (getRotationContext(body).isRotation) {
+    await markLeadSkipped(options.eventId, 'rotational test call; CRM and cohort retries disabled');
+    return { success: true, skipped: true, reason: 'rotational test call' };
+  }
   const parsed = parseCallSummary(body);
   const isPatchOnlyAgent = PATCH_ONLY_AGENT_TYPES.has(parsed.agentType);
   const isPositive = isPositiveCall(parsed);

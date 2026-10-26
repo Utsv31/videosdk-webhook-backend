@@ -1,6 +1,7 @@
 const { ObjectId } = require('mongodb');
 const { getCallEventsCollection, isMongoConfigured } = require('../services/mongo');
 const logger = require('../utils/logger');
+const { getRotationContext } = require('../utils/rotationPlan');
 
 function unwrapWebhookBody(body) {
   return body;
@@ -108,6 +109,7 @@ async function saveIncomingWebhook(body) {
       },
       $set: {
         callId,
+        ...(getRotationContext(body).jobId ? { rotationJobId: getRotationContext(body).jobId } : {}),
         roomId,
         agentId,
         refrensLeadId,
@@ -145,9 +147,10 @@ async function updateEvent(eventId, update) {
   );
 }
 
-async function markEventIgnored(eventId, reason) {
+async function markEventIgnored(eventId, reason, rotationJobId) {
   return updateEvent(eventId, {
     $set: {
+      ...(rotationJobId ? { rotationJobId } : {}),
       'processing.status': 'skipped',
       'processing.skipReason': reason,
       'processing.processedAt': new Date(),

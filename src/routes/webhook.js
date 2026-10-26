@@ -14,6 +14,9 @@ const { markOutboundJobWebhookReceived } = require('../repositories/outboundCall
 const validateWebhook = require('../utils/validateWebhook');
 const deferTask = require('../utils/deferTask');
 const logger = require('../utils/logger');
+const { getRotationContext } = require('../utils/rotationPlan');
+const { recordRotationWebhook } = require('../repositories/rotationJobs');
+const { isMongoConfigured } = require('../services/mongo');
 
 const router = express.Router();
 
@@ -59,6 +62,15 @@ router.post('/', (req, res) => {
           reason: validation.reason,
         });
         await markEventIgnored(eventId, `signature validation failed: ${validation.reason}`);
+        return;
+      }
+
+      const rotation = getRotationContext(body);
+      const rotationJob = rotation.isRotation || (!outboundJobId && isMongoConfigured())
+        ? await recordRotationWebhook({ jobId: rotation.jobId, callId, roomId, webhookType, eventId, body })
+        : null;
+      if (rotation.isRotation || rotationJob) {
+        await markEventIgnored(eventId, 'rotational test call logged; CRM and cohort retries disabled', rotationJob?._id?.toString() || rotation.jobId);
         return;
       }
 
